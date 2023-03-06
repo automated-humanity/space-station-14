@@ -9,7 +9,7 @@ using Robust.Shared.Timing;
 namespace Content.Client.Info;
 
 [GenerateTypedNameReferences]
-public partial class RulesPopup : Control
+public sealed partial class RulesPopup : Control
 {
     private float _timer;
 
@@ -37,14 +37,11 @@ public partial class RulesPopup : Control
     private void OnQuitButtonPressed(BaseButton.ButtonEventArgs obj)
     {
         OnQuitPressed?.Invoke();
-        Dispose();
     }
 
     private void OnAcceptButtonPressed(BaseButton.ButtonEventArgs obj)
     {
-        Parent?.RemoveChild(this);
         OnAcceptPressed?.Invoke();
-        Dispose();
     }
 
     protected override void FrameUpdate(FrameEventArgs args)

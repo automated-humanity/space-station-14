@@ -1,11 +1,9 @@
-using System;
 using Content.Client.Markers;
 using Content.Client.Popups;
+using Content.Client.SubFloor;
 using Content.Shared.SubFloor;
 using Robust.Client.GameObjects;
 using Robust.Shared.Console;
-using Robust.Shared.GameObjects;
-using Robust.Shared.IoC;
 using DrawDepth = Content.Shared.DrawDepth.DrawDepth;
 
 namespace Content.Client.Commands
@@ -19,8 +17,7 @@ namespace Content.Client.Commands
 
         public void Execute(IConsoleShell shell, string argStr, string[] args)
         {
-            EntitySystem.Get<MarkerSystem>()
-                .MarkersVisible ^= true;
+            IoCManager.Resolve<IEntitySystemManager>().GetEntitySystem<MarkerSystem>().MarkersVisible ^= true;
         }
     }
 
@@ -33,8 +30,7 @@ namespace Content.Client.Commands
 
         public void Execute(IConsoleShell shell, string argStr, string[] args)
         {
-            EntitySystem.Get<SubFloorHideSystem>()
-                .ShowAll ^= true;
+            IoCManager.Resolve<IEntitySystemManager>().GetEntitySystem<SubFloorHideSystem>().ShowAll ^= true;
         }
     }
 
@@ -47,18 +43,14 @@ namespace Content.Client.Commands
 
         public void Execute(IConsoleShell shell, string argStr, string[] args)
         {
-            EntitySystem.Get<SubFloorHideSystem>()
-                .ShowAll = true;
+            EntitySystem.Get<SubFloorHideSystem>().ShowAll = true;
 
             var entMan = IoCManager.Resolve<IEntityManager>();
-            var components = entMan.EntityQuery<SubFloorHideComponent>(true);
+            var components = entMan.EntityQuery<SubFloorHideComponent, SpriteComponent>(true);
 
-            foreach (var component in components)
+            foreach (var (_, sprite) in components)
             {
-                if (entMan.TryGetComponent(component.Owner, out ISpriteComponent? sprite))
-                {
-                    sprite.DrawDepth = (int) DrawDepth.Overlays;
-                }
+                sprite.DrawDepth = (int) DrawDepth.Overlays;
             }
         }
     }
@@ -73,33 +65,7 @@ namespace Content.Client.Commands
         {
             var message = args[0];
 
-            EntitySystem.Get<PopupSystem>().PopupCursor(message);
-        }
-    }
-
-    internal sealed class MappingCommand : IConsoleCommand
-    {
-        public string Command => "mapping";
-        public string Description => "Creates and teleports you to a new uninitialized map for mapping.";
-        public string Help => $"Usage: {Command} <mapname> / {Command} <id> <mapname>";
-
-        public void Execute(IConsoleShell shell, string argStr, string[] args)
-        {
-            if (args.Length == 0)
-            {
-                shell.WriteLine(Help);
-                return;
-            }
-
-#if DEBUG
-            shell.WriteError("WARNING: The client is using a debug build. You are risking losing your changes.");
-#endif
-
-            shell.ConsoleHost.RegisteredCommands["togglelight"].Execute(shell, string.Empty, Array.Empty<string>());
-            shell.ConsoleHost.RegisteredCommands["showsubfloorforever"].Execute(shell, string.Empty, Array.Empty<string>());
-            shell.ConsoleHost.RegisteredCommands["showmarkers"].Execute(shell, string.Empty, Array.Empty<string>());
-
-            shell.RemoteExecuteCommand(argStr);
+            IoCManager.Resolve<IEntitySystemManager>().GetEntitySystem<PopupSystem>().PopupCursor(message);
         }
     }
 }

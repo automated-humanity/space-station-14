@@ -11,8 +11,6 @@ namespace Content.Client.Animations
     [RegisterComponent]
     public sealed class AnimationsTestComponent : Component
     {
-        public override string Name => "AnimationsTest";
-
         protected override void Initialize()
         {
             base.Initialize();
@@ -36,7 +34,7 @@ namespace Content.Client.Animations
                     },
                     new AnimationTrackComponentProperty
                     {
-                        ComponentType = typeof(ISpriteComponent),
+                        ComponentType = typeof(SpriteComponent),
                         Property = "layer/0/texture",
                         KeyFrames =
                         {

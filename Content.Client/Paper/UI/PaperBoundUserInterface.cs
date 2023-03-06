@@ -8,25 +8,29 @@ using static Content.Shared.Paper.SharedPaperComponent;
 namespace Content.Client.Paper.UI
 {
     [UsedImplicitly]
-    public class PaperBoundUserInterface : BoundUserInterface
+    public sealed class PaperBoundUserInterface : BoundUserInterface
     {
         private PaperWindow? _window;
 
-        public PaperBoundUserInterface(ClientUserInterfaceComponent owner, object uiKey) : base(owner, uiKey)
+        public PaperBoundUserInterface(ClientUserInterfaceComponent owner, Enum uiKey) : base(owner, uiKey)
         {
         }
 
         protected override void Open()
         {
             base.Open();
-            _window = new PaperWindow
-            {
-                Title = IoCManager.Resolve<IEntityManager>().GetComponent<MetaDataComponent>(Owner.Owner).EntityName,
-            };
+            var entityMgr = IoCManager.Resolve<IEntityManager>();
+
+            _window = new PaperWindow();
             _window.OnClose += Close;
             _window.Input.OnTextEntered += Input_OnTextEntered;
-            _window.OpenCentered();
 
+            if (entityMgr.TryGetComponent<PaperVisualsComponent>(Owner.Owner, out var visuals))
+            {
+                _window.InitVisuals(visuals);
+            }
+
+            _window.OpenCentered();
         }
 
         protected override void UpdateState(BoundUserInterfaceState state)
@@ -39,7 +43,7 @@ namespace Content.Client.Paper.UI
         {
             if (!string.IsNullOrEmpty(obj.Text))
             {
-                SendMessage(new PaperInputText(obj.Text));
+                SendMessage(new PaperInputTextMessage(obj.Text));
 
                 if (_window != null)
                 {

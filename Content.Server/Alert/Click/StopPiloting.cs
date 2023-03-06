@@ -1,12 +1,7 @@
-﻿using Content.Server.Shuttles;
-using Content.Server.Shuttles.EntitySystems;
+using Content.Server.Shuttles.Systems;
 using Content.Shared.Alert;
-using Content.Shared.Shuttles;
 using Content.Shared.Shuttles.Components;
 using JetBrains.Annotations;
-using Robust.Shared.GameObjects;
-using Robust.Shared.IoC;
-using Robust.Shared.Serialization.Manager.Attributes;
 
 namespace Content.Server.Alert.Click
 {
@@ -15,14 +10,16 @@ namespace Content.Server.Alert.Click
     /// </summary>
     [UsedImplicitly]
     [DataDefinition]
-    public class StopPiloting : IAlertClick
+    public sealed class StopPiloting : IAlertClick
     {
-        public void AlertClicked(ClickAlertEventArgs args)
+        public void AlertClicked(EntityUid player)
         {
-            if (IoCManager.Resolve<IEntityManager>().TryGetComponent(args.Player, out PilotComponent? pilotComponent) &&
+            var entManager = IoCManager.Resolve<IEntityManager>();
+
+            if (entManager.TryGetComponent(player, out PilotComponent? pilotComponent) &&
                 pilotComponent.Console != null)
             {
-                EntitySystem.Get<ShuttleConsoleSystem>().RemovePilot(pilotComponent);
+                entManager.System<ShuttleConsoleSystem>().RemovePilot(pilotComponent);
             }
         }
     }

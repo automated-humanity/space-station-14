@@ -5,21 +5,23 @@
   placement:
     mode: SnapgridCenter
   components:
+  - type: MeleeSound
+    soundGroups:
+      Brute:
+        path:
+          "/Audio/Effects/glass_hit.ogg"
   - type: InteractionOutline
   - type: Physics
   - type: Fixtures
     fixtures:
     - shape:
         !type:PhysShapeAabb
-        bounds: "-0.49,-0.49,0.49,-0.3"
-      mass: 50
-      layer:
-      - Impassable
-      - MobImpassable
-      - VaultImpassable
-      - SmallImpassable
+        bounds: "-0.49,-0.39,0.49,-0.36"
+      density: 1500
       mask:
-      - VaultImpassable
+      - TabletopMachineMask
+      layer:
+      - GlassAirlockLayer
   - type: Sprite
     netsync: false
     sprite: Structures/Doors/Windoors/windoor.rsi
@@ -30,19 +32,36 @@
       shader: unshaded
       map: ["enum.DoorVisualLayers.BaseUnlit"]
     - state: welded
-      map: ["enum.DoorVisualLayers.BaseWelded"]
+      map: ["enum.WeldableLayers.BaseWelded"]
     - state: bolted_unlit
       shader: unshaded
       map: ["enum.DoorVisualLayers.BaseBolted"]
+    - state: emergency_unlit
+      shader: unshaded
+      map: ["enum.DoorVisualLayers.BaseEmergencyAccess"]
     - state: panel_open
       map: ["enum.WiresVisualLayers.MaintenancePanel"]
   - type: ApcPowerReceiver
   - type: ExtensionCableReceiver
+  - type: DoorSignalControl
+  - type: SignalReceiver
+    inputs:
+      Open: []
+      Close: []
+      Toggle: []
   - type: Damageable
     damageContainer: Inorganic
     damageModifierSet: Glass
+  - type: ExaminableDamage
+    messages: WindowMessages
   - type: Destructible
     thresholds:
+    - trigger:
+        !type:DamageTrigger
+        damage: 400
+      behaviors: #excess damage (nuke?). avoid computational cost of spawning entities.
+      - !type:DoActsBehavior
+        acts: [ "Destruction" ]
     - trigger:
         !type:DamageTrigger
         damage: 200
@@ -59,20 +78,27 @@
         acts: [ "Destruction" ]
   - type: AccessReader
   - type: Airlock
+    keepOpenIfClicked: true
     openPanelVisible: true
     # needed so that windoors will close regardless of whether there are people in it; it doesn't crush after all
     safety: false
+  - type: ContainerFill
+    containers:
+      board: [ DoorElectronics ]
+  - type: ContainerContainer
+    containers:
+      board: !type:Container
   - type: Door
-    weldable: false
-    crushDamage:
-      types:
-        Blunt: 10
+    canCrush: false
     openSound:
       path: /Audio/Machines/windoor_open.ogg
     closeSound:
       path: /Audio/Machines/windoor_open.ogg
     denySound:
       path: /Audio/Machines/airlock_deny.ogg
+  - type: Electrified
+    enabled: false
+    usesApcPower: true
   - type: Wires
     BoardName: "Windoor Control"
     LayoutId: Airlock
@@ -87,15 +113,19 @@
         denyAnimationTime: 0.4
         animatedPanel: false
         openUnlitVisible: true
-      - type: WiresVisualizer
+  - type: WiresVisuals
   - type: Airtight
     fixVacuum: true
     noAirWhenFullyAirBlocked: false
     airBlockedDirection:
       - South
   - type: Construction
-    graph: windoor
+    graph: Windoor
     node: windoor
+    containers:
+    - board
+  - type: StaticPrice
+    price: 100
 
 - type: entity
   id: BaseSecureWindoor
@@ -113,15 +143,24 @@
       shader: unshaded
       map: [ "enum.DoorVisualLayers.BaseUnlit" ]
     - state: welded
-      map: [ "enum.DoorVisualLayers.BaseWelded" ]
+      map: [ "enum.WeldableLayers.BaseWelded" ]
     - state: bolted_unlit
       shader: unshaded
       map: [ "enum.DoorVisualLayers.BaseBolted" ]
+    - state: emergency_unlit
+      shader: unshaded
+      map: [ "enum.DoorVisualLayers.BaseEmergencyAccess" ]
     - state: panel_open
       map: [ "enum.WiresVisualLayers.MaintenancePanel" ]
       visible: false
   - type: Destructible
     thresholds:
+    - trigger:
+        !type:DamageTrigger
+        damage: 600
+      behaviors: #excess damage (nuke?). avoid computational cost of spawning entities.
+      - !type:DoActsBehavior
+        acts: [ "Destruction" ]
     - trigger:
         !type:DamageTrigger
         damage: 400
@@ -137,5 +176,5 @@
       - !type:DoActsBehavior
         acts: [ "Destruction" ]
   - type: Construction
-    graph: windoor
+    graph: Windoor
     node: windoorSecure

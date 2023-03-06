@@ -19,9 +19,11 @@
           baseState: unlit
     - type: ParticleAcceleratorFuelChamber
     - type: Construction
-      graph: particleAcceleratorFuelChamber
+      graph: ParticleAcceleratorFuelChamber
       node: completed
-
+    - type: GuideHelp
+      guides: [ Singularity, Power ]
+      
 # Unfinished
 
 - type: entity
@@ -37,6 +39,8 @@
       sprite: Structures/Power/Generation/PA/fuel_chamber.rsi
       state: chamber
     - type: Construction
-      graph: particleAcceleratorFuelChamber
+      graph: ParticleAcceleratorFuelChamber
       node: start
       defaultTarget: completed
+    - type: GuideHelp
+      guides: [ Singularity, Power ]

@@ -1,8 +1,6 @@
 - type: reagentDispenserInventory
   id: SodaDispenserInventory
   inventory:
-
-  - Water
   - Ice
   - Coffee
   - Cream
@@ -13,6 +11,7 @@
   - Cola
   - SpaceMountainWind
   - DrGibb
+  - RootBeer
   - SpaceUp
   - TonicWater
   - SodaWater
@@ -35,7 +34,7 @@
   - SodaWater
   - TonicWater
   - Beer
-  - Kahlua
+  - CoffeeLiqueur
   - Whiskey
   - Wine
   - Vodka
@@ -51,3 +50,18 @@
   #- Patron
   #- JuiceWatermelon
   #- JuiceBerry
+
+
+- type: reagentDispenserInventory
+  id: SodaDispenserEmagInventory
+  inventory:
+    - FourteenLoko
+    - Ephedrine
+    - Histamine
+
+- type: reagentDispenserInventory
+  id: BoozeDispenserEmagInventory
+  inventory:
+    - AtomicBomb
+    - Ethanol
+    - Iron

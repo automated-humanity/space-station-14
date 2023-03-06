@@ -5,14 +5,14 @@ using Robust.Shared.ViewVariables;
 
 namespace Content.Client.Instruments.UI
 {
-    public class InstrumentBoundUserInterface : BoundUserInterface
+    public sealed class InstrumentBoundUserInterface : BoundUserInterface
     {
         [ViewVariables]
         private InstrumentMenu? _instrumentMenu;
 
         public InstrumentComponent? Instrument { get; set; }
 
-        public InstrumentBoundUserInterface(ClientUserInterfaceComponent owner, object uiKey) : base(owner, uiKey)
+        public InstrumentBoundUserInterface(ClientUserInterfaceComponent owner, Enum uiKey) : base(owner, uiKey)
         {
         }
 

@@ -1,15 +1,18 @@
 - type: job
   id: Botanist
-  name: "botanist"
+  name: job-name-botanist
+  description: job-description-botanist
+  playTimeTracker: JobBotanist
   startingGear: BotanistGear
-  departments:
-  - Civilian
   icon: "Botanist"
-  supervisors: "the head of personnel"
+  supervisors: job-supervisors-hop
   access:
   - Service
   - Maintenance
   - Hydroponics
+  extendedAccess:
+  - Kitchen
+  - Bar
 
 - type: startingGear
   id: BotanistGear
@@ -19,7 +22,8 @@
     shoes: ClothingShoesColorBrown
     id: BotanistPDA
     ears: ClothingHeadsetService
-    outerclothing: ClothingOuterApronBotanist
+    outerClothing: ClothingOuterApronBotanist
+    belt: ClothingBeltPlantFilled
   innerclothingskirt: ClothingUniformJumpskirtHydroponics
   satchel: ClothingBackpackSatchelHydroponicsFilled
-  duffelbag: ClothingBackpackDuffelFilled
+  duffelbag: ClothingBackpackDuffelHydroponicsFilled

@@ -12,7 +12,7 @@ namespace Content.Client.ContextMenu.UI
     ///     The base context-menu pop-up window used for both the entity and verb menus.
     /// </summary>
     [GenerateTypedNameReferences]
-    public partial class ContextMenuPopup : Popup
+    public sealed partial class ContextMenuPopup : Popup
     {
         public const string StyleClassContextMenuPopup = "contextMenuPopup";
 
@@ -29,18 +29,19 @@ namespace Content.Client.ContextMenu.UI
         /// <summary>
         ///     This is the main body of the menu. The menu entries should be added to this object.
         /// </summary>
-        public BoxContainer MenuBody = new() { Orientation = LayoutOrientation.Vertical };
+        public GridContainer MenuBody = new();
 
-        private ContextMenuPresenter _presenter;
+        private ContextMenuUIController _uiController;
 
-        public ContextMenuPopup (ContextMenuPresenter presenter, ContextMenuElement? parentElement) : base()
+        public ContextMenuPopup (ContextMenuUIController uiController, ContextMenuElement? parentElement) : base()
         {
             RobustXamlLoader.Load(this);
             MenuPanel.SetOnlyStyleClass(StyleClassContextMenuPopup);
 
-            _presenter = presenter;
+            _uiController = uiController;
             ParentElement = parentElement;
 
+            // TODO xaml controls now have the access options -> re-xamlify all this.
             //XAML controls are private. So defining and adding MenuBody here instead.
             Scroll.AddChild(MenuBody);
 
@@ -51,18 +52,28 @@ namespace Content.Client.ContextMenu.UI
             MenuPanel.MaxHeight = MaxItemsBeforeScroll * (ContextMenuElement.ElementHeight + 2 * ContextMenuElement.ElementMargin) + styleSize.Y;
 
             UserInterfaceManager.ModalRoot.AddChild(this);
-            MenuBody.OnChildRemoved += ctrl => _presenter.OnRemoveElement(this, ctrl);
-            
+            MenuBody.OnChildRemoved += ctrl => _uiController.OnRemoveElement(this, ctrl);
+            MenuBody.VSeparationOverride = 0;
+            MenuBody.HSeparationOverride = 0;
+
             if (ParentElement != null)
             {
                 DebugTools.Assert(ParentElement.SubMenu == null);
                 ParentElement.SubMenu = this;
             }
+
+            // ensure the menu-stack is properly updated when a pop-up looses focus or otherwise closes without going
+            // through the menu presenter.
+            OnPopupHide += () =>
+            {
+                if (ParentElement != null)
+                    _uiController.CloseSubMenus(ParentElement.ParentMenu);
+            };
         }
 
         protected override void Dispose(bool disposing)
         {
-            MenuBody.OnChildRemoved -= ctrl => _presenter.OnRemoveElement(this, ctrl);
+            MenuBody.OnChildRemoved -= ctrl => _uiController.OnRemoveElement(this, ctrl);
             ParentElement = null;
             base.Dispose(disposing);
         }

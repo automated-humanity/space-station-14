@@ -20,8 +20,11 @@
     - type: ParticleAcceleratorEmitter
       emitterType: Left
     - type: Construction
-      graph: particleAcceleratorEmitterLeft
+      graph: ParticleAcceleratorEmitterLeft
       node: completed
+    - type: GuideHelp
+      guides: [ Singularity, Power ]
+
 
 - type: entity
   parent: ParticleAcceleratorBase
@@ -45,9 +48,11 @@
     - type: ParticleAcceleratorEmitter
       emitterType: Center
     - type: Construction
-      graph: particleAcceleratorEmitterCenter
+      graph: ParticleAcceleratorEmitterCenter
       node: completed
-
+    - type: GuideHelp
+      guides: [ Singularity, Power ]
+      
 - type: entity
   parent: ParticleAcceleratorBase
   id: ParticleAcceleratorEmitterRight
@@ -70,9 +75,11 @@
     - type: ParticleAcceleratorEmitter
       emitterType: Right
     - type: Construction
-      graph: particleAcceleratorEmitterRight
+      graph: ParticleAcceleratorEmitterRight
       node: completed
-
+    - type: GuideHelp
+      guides: [ Singularity, Power ]
+      
 # Unfinished
 
 - type: entity
@@ -88,9 +95,11 @@
       sprite: Structures/Power/Generation/PA/emitter_left.rsi
       state: left
     - type: Construction
-      graph: particleAcceleratorEmitterLeft
+      graph: ParticleAcceleratorEmitterLeft
       node: start
       defaultTarget: completed
+    - type: GuideHelp
+      guides: [ Singularity, Power ]
 
 - type: entity
   parent: ParticleAcceleratorBase
@@ -105,9 +114,11 @@
       sprite: Structures/Power/Generation/PA/emitter_center.rsi
       state: center
     - type: Construction
-      graph: particleAcceleratorEmitterCenter
+      graph: ParticleAcceleratorEmitterCenter
       node: start
       defaultTarget: completed
+    - type: GuideHelp
+      guides: [ Singularity, Power ]
 
 - type: entity
   parent: ParticleAcceleratorBase
@@ -122,6 +133,8 @@
       sprite: Structures/Power/Generation/PA/emitter_right.rsi
       state: right
     - type: Construction
-      graph: particleAcceleratorEmitterRight
+      graph: ParticleAcceleratorEmitterRight
       node: start
       defaultTarget: completed
+    - type: GuideHelp
+      guides: [ Singularity, Power ]

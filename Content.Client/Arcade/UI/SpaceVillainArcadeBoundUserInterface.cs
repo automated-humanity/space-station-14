@@ -5,13 +5,13 @@ using static Content.Shared.Arcade.SharedSpaceVillainArcadeComponent;
 
 namespace Content.Client.Arcade.UI
 {
-    public class SpaceVillainArcadeBoundUserInterface : BoundUserInterface
+    public sealed class SpaceVillainArcadeBoundUserInterface : BoundUserInterface
     {
         [ViewVariables] private SpaceVillainArcadeMenu? _menu;
 
         //public SharedSpaceVillainArcadeComponent SpaceVillainArcade;
 
-        public SpaceVillainArcadeBoundUserInterface(ClientUserInterfaceComponent owner, object uiKey) : base(owner, uiKey)
+        public SpaceVillainArcadeBoundUserInterface(ClientUserInterfaceComponent owner, Enum uiKey) : base(owner, uiKey)
         {
             SendAction(PlayerAction.RequestData);
         }

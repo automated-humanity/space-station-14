@@ -4,10 +4,16 @@
   name: airlock
   description: It opens, it closes, and maybe crushes you.
   components:
+  - type: MeleeSound
+    soundGroups:
+      Brute:
+        path:
+          "/Audio/Weapons/smash.ogg"
   - type: InteractionOutline
   - type: Sprite
     netsync: false
     sprite: Structures/Doors/Airlocks/Standard/basic.rsi
+    snapCardinals: true
     layers:
     - state: closed
       map: ["enum.DoorVisualLayers.Base"]
@@ -15,10 +21,13 @@
       shader: unshaded
       map: ["enum.DoorVisualLayers.BaseUnlit"]
     - state: welded
-      map: ["enum.DoorVisualLayers.BaseWelded"]
+      map: ["enum.WeldableLayers.BaseWelded"]
     - state: bolted_unlit
       shader: unshaded
       map: ["enum.DoorVisualLayers.BaseBolted"]
+    - state: emergency_unlit
+      map: ["enum.DoorVisualLayers.BaseEmergencyAccess"]
+      shader: unshaded
     - state: panel_open
       map: ["enum.WiresVisualLayers.MaintenancePanel"]
   - type: Physics
@@ -26,18 +35,16 @@
     fixtures:
     - shape:
         !type:PhysShapeAabb
-          bounds: "-0.49,-0.49,0.49,0.49" # don't want this colliding with walls or they won't close
-      mass: 100
+        bounds: "-0.49,-0.49,0.49,0.49" # don't want this colliding with walls or they won't close
+      density: 100
       mask:
-      - MobImpassable
+      - FullTileMask
       layer:
-      - Opaque
-      - Impassable
-      - MobImpassable
-      - VaultImpassable
-      - SmallImpassable
+      - AirlockLayer
+  - type: ContainerFill
+    containers:
+      board: [ DoorElectronics ]
   - type: Door
-    board: DoorElectronics
     crushDamage:
       types:
         Blunt: 15
@@ -47,22 +54,41 @@
       path: /Audio/Machines/airlock_close.ogg
     denySound:
       path: /Audio/Machines/airlock_deny.ogg
+  - type: ContainerContainer
+    containers:
+      board: !type:Container
+  - type: Weldable
+    fuel: 3
+    time: 3
   - type: Airlock
   - type: Appearance
     visuals:
     - type: AirlockVisualizer
-    - type: WiresVisualizer
+  - type: WiresVisuals
   - type: ApcPowerReceiver
+    powerLoad: 20
   - type: ExtensionCableReceiver
+  - type: Electrified
+    enabled: false
+    usesApcPower: true
   - type: Wires
     BoardName: "Airlock Control"
     LayoutId: Airlock
+  - type: DoorSignalControl
+  - type: SignalReceiver
+    inputs:
+      Open: []
+      Close: []
+      Toggle: []
   - type: UserInterface
     interfaces:
     - key: enum.WiresUiKey.Key
       type: WiresBoundUserInterface
   - type: Airtight
     fixVacuum: true
+    noAirWhenFullyAirBlocked: false
+  - type: RadiationBlocker
+    resistance: 3
   - type: Occluder
   - type: Damageable
     damageContainer: Inorganic
@@ -76,10 +102,16 @@
       - !type:DoActsBehavior
         acts: ["Destruction"]
   - type: Construction
-    graph: airlock
+    graph: Airlock
     node: airlock
+    containers:
+    - board
   - type: IconSmooth
     key: walls
     mode: NoSprite
+  - type: PaintableAirlock
+    group: Standard
+  - type: StaticPrice
+    price: 150
   placement:
     mode: SnapgridCenter

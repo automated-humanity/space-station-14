@@ -1,17 +1,12 @@
-using System;
-using System.Collections.Generic;
-using Content.Shared.DragDrop;
-using Robust.Shared.GameObjects;
 using Robust.Shared.GameStates;
-using Robust.Shared.Players;
 using Robust.Shared.Serialization;
 
 namespace Content.Shared.Disposal.Components
 {
     [NetworkedComponent]
-    public abstract class SharedDisposalUnitComponent : Component, IDragDropOn
+    public abstract class SharedDisposalUnitComponent : Component
     {
-        public override string Name => "DisposalUnit";
+        public const string ContainerId = "DisposalUnit";
 
         // TODO: Could maybe turn the contact off instead far more cheaply as farseer (though not box2d) had support for it?
         // Need to suss it out.
@@ -19,6 +14,12 @@ namespace Content.Shared.Disposal.Components
         /// We'll track whatever just left disposals so we know what collision we need to ignore until they stop intersecting our BB.
         /// </summary>
         public List<EntityUid> RecentlyEjected = new();
+
+        [DataField("flushTime", required: true)]
+        public readonly float FlushTime;
+
+        [DataField("mobsCanEnter")]
+        public bool MobsCanEnter = true;
 
         [Serializable, NetSerializable]
         public enum Visuals : byte
@@ -45,12 +46,12 @@ namespace Content.Shared.Disposal.Components
         }
 
         [Serializable, NetSerializable]
-        public enum LightState : byte
+        public enum LightStates : byte
         {
-            Off,
-            Charging,
-            Full,
-            Ready
+            Off = 0,
+            Charging = 1 << 0,
+            Full = 1 << 1,
+            Ready = 1 << 2
         }
 
         [Serializable, NetSerializable]
@@ -85,7 +86,7 @@ namespace Content.Shared.Disposal.Components
         }
 
         [Serializable, NetSerializable]
-        public class DisposalUnitBoundUserInterfaceState : BoundUserInterfaceState, IEquatable<DisposalUnitBoundUserInterfaceState>
+        public sealed class DisposalUnitBoundUserInterfaceState : BoundUserInterfaceState, IEquatable<DisposalUnitBoundUserInterfaceState>
         {
             public readonly string UnitName;
             public readonly string UnitState;
@@ -119,7 +120,7 @@ namespace Content.Shared.Disposal.Components
         ///     Message data sent from client to server when a disposal unit ui button is pressed.
         /// </summary>
         [Serializable, NetSerializable]
-        public class UiButtonPressedMessage : BoundUserInterfaceMessage
+        public sealed class UiButtonPressedMessage : BoundUserInterfaceMessage
         {
             public readonly UiButton Button;
 
@@ -134,13 +135,5 @@ namespace Content.Shared.Disposal.Components
         {
             Key
         }
-
-        // TODO: Unfortunately these aren't really ECS yet so soontm
-        public virtual bool CanDragDropOn(DragDropEvent eventArgs)
-        {
-            return EntitySystem.Get<SharedDisposalUnitSystem>().CanInsert(this, eventArgs.Dragged);
-        }
-
-        public abstract bool DragDropOn(DragDropEvent eventArgs);
     }
 }

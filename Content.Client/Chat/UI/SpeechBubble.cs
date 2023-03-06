@@ -1,12 +1,7 @@
-using System;
 using Content.Client.Chat.Managers;
-using Content.Client.Viewport;
 using Robust.Client.Graphics;
 using Robust.Client.UserInterface;
 using Robust.Client.UserInterface.Controls;
-using Robust.Shared.GameObjects;
-using Robust.Shared.IoC;
-using Robust.Shared.Maths;
 using Robust.Shared.Timing;
 
 namespace Content.Client.Chat.UI
@@ -16,7 +11,8 @@ namespace Content.Client.Chat.UI
         public enum SpeechType : byte
         {
             Emote,
-            Say
+            Say,
+            Whisper
         }
 
         /// <summary>
@@ -45,24 +41,30 @@ namespace Content.Client.Chat.UI
         public float VerticalOffset { get; set; }
         private float _verticalOffsetAchieved;
 
-        public float ContentHeight { get; private set; }
+        public Vector2 ContentSize { get; private set; }
+
+        // man down
+        public event Action<EntityUid, SpeechBubble>? OnDied;
 
         public static SpeechBubble CreateSpeechBubble(SpeechType type, string text, EntityUid senderEntity, IEyeManager eyeManager, IChatManager chatManager, IEntityManager entityManager)
         {
             switch (type)
             {
                 case SpeechType.Emote:
-                    return new EmoteSpeechBubble(text, senderEntity, eyeManager, chatManager, entityManager);
+                    return new TextSpeechBubble(text, senderEntity, eyeManager, chatManager, entityManager, "emoteBox");
 
                 case SpeechType.Say:
-                    return new SaySpeechBubble(text, senderEntity, eyeManager, chatManager, entityManager);
+                    return new TextSpeechBubble(text, senderEntity, eyeManager, chatManager, entityManager, "sayBox");
+
+                case SpeechType.Whisper:
+                    return new TextSpeechBubble(text, senderEntity, eyeManager, chatManager, entityManager, "whisperBox");
 
                 default:
                     throw new ArgumentOutOfRangeException();
             }
         }
 
-        public SpeechBubble(string text, EntityUid senderEntity, IEyeManager eyeManager, IChatManager chatManager, IEntityManager entityManager)
+        public SpeechBubble(string text, EntityUid senderEntity, IEyeManager eyeManager, IChatManager chatManager, IEntityManager entityManager, string speechStyleClass)
         {
             _chatManager = chatManager;
             _senderEntity = senderEntity;
@@ -72,18 +74,18 @@ namespace Content.Client.Chat.UI
             // Use text clipping so new messages don't overlap old ones being pushed up.
             RectClipContent = true;
 
-            var bubble = BuildBubble(text);
+            var bubble = BuildBubble(text, speechStyleClass);
 
             AddChild(bubble);
 
             ForceRunStyleUpdate();
 
             bubble.Measure(Vector2.Infinity);
-            ContentHeight = bubble.DesiredSize.Y;
-            _verticalOffsetAchieved = -ContentHeight;
+            ContentSize = bubble.DesiredSize;
+            _verticalOffsetAchieved = -ContentSize.Y;
         }
 
-        protected abstract Control BuildBubble(string text);
+        protected abstract Control BuildBubble(string text, string speechStyleClass);
 
         protected override void FrameUpdate(FrameEventArgs args)
         {
@@ -107,8 +109,7 @@ namespace Content.Client.Chat.UI
                 _verticalOffsetAchieved = MathHelper.Lerp(_verticalOffsetAchieved, VerticalOffset, 10 * args.DeltaSeconds);
             }
 
-            if (!_entityManager.TryGetComponent<TransformComponent>(_senderEntity, out var xform)
-                    || !xform.Coordinates.IsValid(_entityManager))
+            if (!_entityManager.TryGetComponent<TransformComponent>(_senderEntity, out var xform) || xform.MapID != _eyeManager.CurrentMap)
             {
                 Modulate = Color.White.WithAlpha(0);
                 return;
@@ -125,18 +126,16 @@ namespace Content.Client.Chat.UI
                 Modulate = Color.White;
             }
 
+            var offset = (-_eyeManager.CurrentEye.Rotation).ToWorldVec() * -EntityVerticalOffset;
+            var worldPos = xform.WorldPosition + offset;
 
-            var worldPos = xform.WorldPosition;
-            var scale = _eyeManager.MainViewport.GetRenderScale();
-            var offset = new Vector2(0, EntityVerticalOffset * EyeManager.PixelsPerMeter * scale);
-            var lowerCenter = (_eyeManager.WorldToScreen(worldPos) - offset) / UIScale;
-
-            var screenPos = lowerCenter - (Width / 2, ContentHeight + _verticalOffsetAchieved);
+            var lowerCenter = _eyeManager.WorldToScreen(worldPos) / UIScale;
+            var screenPos = lowerCenter - (ContentSize.X / 2, ContentSize.Y + _verticalOffsetAchieved);
             // Round to nearest 0.5
             screenPos = (screenPos * 2).Rounded() / 2;
             LayoutContainer.SetPosition(this, screenPos);
 
-            var height = MathF.Ceiling(MathHelper.Clamp(lowerCenter.Y - screenPos.Y, 0, ContentHeight));
+            var height = MathF.Ceiling(MathHelper.Clamp(lowerCenter.Y - screenPos.Y, 0, ContentSize.Y));
             SetHeight = height;
         }
 
@@ -147,7 +146,7 @@ namespace Content.Client.Chat.UI
                 return;
             }
 
-            _chatManager.RemoveSpeechBubble(_senderEntity, this);
+            OnDied?.Invoke(_senderEntity, this);
         }
 
         /// <summary>
@@ -162,15 +161,14 @@ namespace Content.Client.Chat.UI
         }
     }
 
-    public class EmoteSpeechBubble : SpeechBubble
-
+    public sealed class TextSpeechBubble : SpeechBubble
     {
-        public EmoteSpeechBubble(string text, EntityUid senderEntity, IEyeManager eyeManager, IChatManager chatManager, IEntityManager entityManager)
-            : base(text, senderEntity, eyeManager, chatManager, entityManager)
+        public TextSpeechBubble(string text, EntityUid senderEntity, IEyeManager eyeManager, IChatManager chatManager, IEntityManager entityManager, string speechStyleClass)
+            : base(text, senderEntity, eyeManager, chatManager, entityManager, speechStyleClass)
         {
         }
 
-        protected override Control BuildBubble(string text)
+        protected override Control BuildBubble(string text, string speechStyleClass)
         {
             var label = new RichTextLabel
             {
@@ -180,33 +178,7 @@ namespace Content.Client.Chat.UI
 
             var panel = new PanelContainer
             {
-                StyleClasses = { "speechBox", "emoteBox" },
-                Children = { label },
-                ModulateSelfOverride = Color.White.WithAlpha(0.75f)
-            };
-
-            return panel;
-        }
-    }
-
-    public class SaySpeechBubble : SpeechBubble
-    {
-        public SaySpeechBubble(string text, EntityUid senderEntity, IEyeManager eyeManager, IChatManager chatManager, IEntityManager entityManager)
-            : base(text, senderEntity, eyeManager, chatManager, entityManager)
-        {
-        }
-
-        protected override Control BuildBubble(string text)
-        {
-            var label = new RichTextLabel
-            {
-                MaxWidth = 256,
-            };
-            label.SetMessage(text);
-
-            var panel = new PanelContainer
-            {
-                StyleClasses = { "speechBox", "sayBox" },
+                StyleClasses = { "speechBox", speechStyleClass },
                 Children = { label },
                 ModulateSelfOverride = Color.White.WithAlpha(0.75f)
             };

@@ -1,10 +1,15 @@
-using Robust.Shared.GameObjects;
-
 namespace Content.Server.Explosion.Components
 {
     [RegisterComponent]
-    public class TriggerOnCollideComponent : Component
+    public sealed class TriggerOnCollideComponent : Component
     {
-        public override string Name => "TriggerOnCollide";
+		[DataField("fixtureID", required: true)]
+		public string FixtureID = String.Empty;
+
+        /// <summary>
+        ///     Doesn't trigger if the other colliding fixture is nonhard.
+        /// </summary>
+        [DataField("ignoreOtherNonHard")]
+        public bool IgnoreOtherNonHard = true;
     }
 }

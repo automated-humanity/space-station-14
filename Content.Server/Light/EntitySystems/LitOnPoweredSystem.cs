@@ -2,11 +2,10 @@ using Content.Server.Light.Components;
 using Content.Server.Power.Components;
 using Content.Server.Power.EntitySystems;
 using Robust.Server.GameObjects;
-using Robust.Shared.GameObjects;
 
 namespace Content.Server.Light.EntitySystems
 {
-    public class LitOnPoweredSystem : EntitySystem
+    public sealed class LitOnPoweredSystem : EntitySystem
     {
         public override void Initialize()
         {
@@ -15,7 +14,7 @@ namespace Content.Server.Light.EntitySystems
             SubscribeLocalEvent<LitOnPoweredComponent, PowerNetBatterySupplyEvent>(OnPowerSupply);
         }
 
-        private void OnPowerChanged(EntityUid uid, LitOnPoweredComponent component, PowerChangedEvent args)
+        private void OnPowerChanged(EntityUid uid, LitOnPoweredComponent component, ref PowerChangedEvent args)
         {
             if (EntityManager.TryGetComponent<PointLightComponent>(uid, out var light))
             {
@@ -23,7 +22,7 @@ namespace Content.Server.Light.EntitySystems
             }
         }
 
-        private void OnPowerSupply(EntityUid uid, LitOnPoweredComponent component, PowerNetBatterySupplyEvent args)
+        private void OnPowerSupply(EntityUid uid, LitOnPoweredComponent component, ref PowerNetBatterySupplyEvent args)
         {
             if (EntityManager.TryGetComponent<PointLightComponent>(uid, out var light))
             {

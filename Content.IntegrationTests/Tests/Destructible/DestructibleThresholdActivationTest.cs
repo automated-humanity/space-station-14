@@ -19,22 +19,19 @@ namespace Content.IntegrationTests.Tests.Destructible
     [TestFixture]
     [TestOf(typeof(DestructibleComponent))]
     [TestOf(typeof(DamageThreshold))]
-    public class DestructibleThresholdActivationTest : ContentIntegrationTest
+    public sealed class DestructibleThresholdActivationTest
     {
         [Test]
         public async Task Test()
         {
-            var server = StartServer(new ServerContentIntegrationOption
-            {
-                ExtraPrototypes = Prototypes
-            });
-
-            await server.WaitIdleAsync();
+            await using var pairTracker = await PoolManager.GetServerClient(new PoolSettings{NoClient = true, ExtraPrototypes = Prototypes});
+            var server = pairTracker.Pair.Server;
 
             var sEntityManager = server.ResolveDependency<IEntityManager>();
-            var sMapManager = server.ResolveDependency<IMapManager>();
             var sPrototypeManager = server.ResolveDependency<IPrototypeManager>();
             var sEntitySystemManager = server.ResolveDependency<IEntitySystemManager>();
+
+            var testMap = await PoolManager.CreateTestMap(pairTracker);
 
             EntityUid sDestructibleEntity = default;
             DamageableComponent sDamageableComponent = null;
@@ -44,8 +41,7 @@ namespace Content.IntegrationTests.Tests.Destructible
 
             await server.WaitPost(() =>
             {
-                var gridId = GetMainGrid(sMapManager).GridEntityId;
-                var coordinates = new EntityCoordinates(gridId, 0, 0);
+                var coordinates = testMap.GridCoords;
 
                 sDestructibleEntity = sEntityManager.SpawnEntity(DestructibleEntityId, coordinates);
                 sDamageableComponent = IoCManager.Resolve<IEntityManager>().GetComponent<DamageableComponent>(sDestructibleEntity);
@@ -137,7 +133,7 @@ namespace Content.IntegrationTests.Tests.Destructible
                 // Heal the entity for 40 damage, down to 60
                 sDamageableSystem.TryChangeDamage(sDestructibleEntity, bluntDamage*-4, true);
 
-                // Thresholds don't work backwards
+                // ThresholdsLookup don't work backwards
                 Assert.That(sTestThresholdListenerSystem.ThresholdsReached, Is.Empty);
 
                 // Damage for 10, up to 70
@@ -149,7 +145,7 @@ namespace Content.IntegrationTests.Tests.Destructible
                 // Heal by 30, down to 40
                 sDamageableSystem.TryChangeDamage(sDestructibleEntity, bluntDamage*-3, true);
 
-                // Thresholds don't work backwards
+                // ThresholdsLookup don't work backwards
                 Assert.That(sTestThresholdListenerSystem.ThresholdsReached, Is.Empty);
 
                 // Damage up to 50 again
@@ -268,6 +264,7 @@ namespace Content.IntegrationTests.Tests.Destructible
                 // They shouldn't have been triggered by changing TriggersOnce
                 Assert.That(sTestThresholdListenerSystem.ThresholdsReached, Is.Empty);
             });
+            await pairTracker.CleanReturnAsync();
         }
     }
 }

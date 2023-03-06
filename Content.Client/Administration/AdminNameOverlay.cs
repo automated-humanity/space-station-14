@@ -1,4 +1,5 @@
-﻿using Robust.Client.Graphics;
+using Content.Client.Administration.Systems;
+using Robust.Client.Graphics;
 using Robust.Client.ResourceManagement;
 using Robust.Shared.Enums;
 using Robust.Shared.GameObjects;
@@ -7,15 +8,15 @@ using Robust.Shared.Maths;
 
 namespace Content.Client.Administration
 {
-    internal class AdminNameOverlay : Overlay
+    internal sealed class AdminNameOverlay : Overlay
     {
         private readonly AdminSystem _system;
         private readonly IEntityManager _entityManager;
         private readonly IEyeManager _eyeManager;
-        private readonly IEntityLookup _entityLookup;
+        private readonly EntityLookupSystem _entityLookup;
         private readonly Font _font;
 
-        public AdminNameOverlay(AdminSystem system, IEntityManager entityManager, IEyeManager eyeManager, IResourceCache resourceCache, IEntityLookup entityLookup)
+        public AdminNameOverlay(AdminSystem system, IEntityManager entityManager, IEyeManager eyeManager, IResourceCache resourceCache, EntityLookupSystem entityLookup)
         {
             _system = system;
             _entityManager = entityManager;
@@ -29,16 +30,16 @@ namespace Content.Client.Administration
 
         protected override void Draw(in OverlayDrawArgs args)
         {
-            var viewport = _eyeManager.GetWorldViewport();
+            var viewport = args.WorldAABB;
 
             foreach (var playerInfo in _system.PlayerList)
             {
                 // Otherwise the entity can not exist yet
-                var entity = playerInfo.EntityUid;
-                if (!_entityManager.EntityExists(entity))
+                if (!_entityManager.EntityExists(playerInfo.EntityUid))
                 {
                     continue;
                 }
+                var entity = playerInfo.EntityUid.Value;
 
                 // if not on the same map, continue
                 if (_entityManager.GetComponent<TransformComponent>(entity).MapID != _eyeManager.CurrentMap)
@@ -46,7 +47,7 @@ namespace Content.Client.Administration
                     continue;
                 }
 
-                var aabb = _entityLookup.GetWorldAabbFromEntity(entity);
+                var aabb = _entityLookup.GetWorldAABB(entity);
 
                 // if not on screen, continue
                 if (!aabb.Intersects(in viewport))
@@ -62,8 +63,8 @@ namespace Content.Client.Administration
                 {
                     args.ScreenHandle.DrawString(_font, screenCoordinates + (lineoffset * 2), "ANTAG", Color.OrangeRed);
                 }
-                args.ScreenHandle.DrawString(_font, screenCoordinates+lineoffset, playerInfo.Username, Color.Yellow);
-                args.ScreenHandle.DrawString(_font, screenCoordinates, playerInfo.CharacterName, Color.Aquamarine);
+                args.ScreenHandle.DrawString(_font, screenCoordinates+lineoffset, playerInfo.Username, playerInfo.Connected ? Color.Yellow : Color.White);
+                args.ScreenHandle.DrawString(_font, screenCoordinates, playerInfo.CharacterName, playerInfo.Connected ? Color.Aquamarine : Color.White);
             }
         }
     }

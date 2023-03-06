@@ -1,21 +1,19 @@
-using System;
-using System.Collections.Generic;
+using System.Linq;
 using Content.Server.Flash.Components;
+using Content.Server.Light.EntitySystems;
 using Content.Server.Stunnable;
-using Content.Server.Weapon.Melee;
 using Content.Shared.Examine;
 using Content.Shared.Flash;
+using Content.Shared.IdentityManagement;
 using Content.Shared.Interaction;
-using Content.Shared.Interaction.Helpers;
+using Content.Shared.Interaction.Events;
 using Content.Shared.Inventory;
 using Content.Shared.Physics;
 using Content.Shared.Popups;
-using Content.Shared.Sound;
+using Content.Shared.Tag;
+using Content.Shared.Weapons.Melee.Events;
 using Robust.Server.GameObjects;
 using Robust.Shared.Audio;
-using Robust.Shared.GameObjects;
-using Robust.Shared.IoC;
-using Robust.Shared.Localization;
 using Robust.Shared.Player;
 using Robust.Shared.Timing;
 using InventoryComponent = Content.Shared.Inventory.InventoryComponent;
@@ -24,26 +22,31 @@ namespace Content.Server.Flash
 {
     internal sealed class FlashSystem : SharedFlashSystem
     {
-        [Dependency] private readonly IEntityLookup _entityLookup = default!;
+        [Dependency] private readonly EntityLookupSystem _entityLookup = default!;
         [Dependency] private readonly IGameTiming _gameTiming = default!;
         [Dependency] private readonly StunSystem _stunSystem = default!;
         [Dependency] private readonly InventorySystem _inventorySystem = default!;
+        [Dependency] private readonly MetaDataSystem _metaSystem = default!;
+        [Dependency] private readonly SharedInteractionSystem _interactionSystem = default!;
+        [Dependency] private readonly TagSystem _tagSystem = default!;
 
         public override void Initialize()
         {
             base.Initialize();
-
             SubscribeLocalEvent<FlashComponent, MeleeHitEvent>(OnFlashMeleeHit);
-            SubscribeLocalEvent<FlashComponent, MeleeInteractEvent>(OnFlashMeleeInteract);
-            SubscribeLocalEvent<FlashComponent, UseInHandEvent>(OnFlashUseInHand);
+            SubscribeLocalEvent<FlashComponent, UseInHandEvent>(OnFlashUseInHand, before: new []{ typeof(HandheldLightSystem) });
             SubscribeLocalEvent<FlashComponent, ExaminedEvent>(OnFlashExamined);
+
             SubscribeLocalEvent<InventoryComponent, FlashAttemptEvent>(OnInventoryFlashAttempt);
+
             SubscribeLocalEvent<FlashImmunityComponent, FlashAttemptEvent>(OnFlashImmunityFlashAttempt);
         }
 
         private void OnFlashMeleeHit(EntityUid uid, FlashComponent comp, MeleeHitEvent args)
         {
-            if (!UseFlash(comp, args.User))
+            if (!args.IsHit ||
+                !args.HitEntities.Any() ||
+                !UseFlash(comp, args.User))
             {
                 return;
             }
@@ -55,27 +58,12 @@ namespace Content.Server.Flash
             }
         }
 
-        private void OnFlashMeleeInteract(EntityUid uid, FlashComponent comp, MeleeInteractEvent args)
-        {
-            if (!UseFlash(comp, args.User))
-            {
-                return;
-            }
-
-            if (EntityManager.HasComponent<FlashableComponent>(args.Entity))
-            {
-                args.CanInteract = true;
-                Flash(args.Entity, args.User, uid, comp.FlashDuration, comp.SlowTo);
-            }
-        }
-
         private void OnFlashUseInHand(EntityUid uid, FlashComponent comp, UseInHandEvent args)
         {
-            if (!UseFlash(comp, args.User))
-            {
+            if (args.Handled || !UseFlash(comp, args.User))
                 return;
-            }
 
+            args.Handled = true;
             FlashArea(uid, args.User, comp.Range, comp.AoeFlashDuration, comp.SlowTo, true);
         }
 
@@ -90,6 +78,8 @@ namespace Content.Server.Flash
                 if (--comp.Uses == 0)
                 {
                     sprite.LayerSetState(0, "burnt");
+
+                    _tagSystem.AddTag(comp.Owner, "Trash");
                     comp.Owner.PopupMessage(user, Loc.GetString("flash-component-becomes-empty"));
                 }
                 else if (!comp.Flashing)
@@ -104,7 +94,7 @@ namespace Content.Server.Flash
                     });
                 }
 
-                SoundSystem.Play(Filter.Pvs(comp.Owner), comp.Sound.GetSound(), comp.Owner, AudioParams.Default);
+                SoundSystem.Play(comp.Sound.GetSound(), Filter.Pvs(comp.Owner), comp.Owner, AudioParams.Default);
 
                 return true;
             }
@@ -112,39 +102,40 @@ namespace Content.Server.Flash
             return false;
         }
 
-        public void Flash(EntityUid target, EntityUid? user, EntityUid? used, float flashDuration, float slowTo, bool displayPopup = true)
+        public void Flash(EntityUid target, EntityUid? user, EntityUid? used, float flashDuration, float slowTo, bool displayPopup = true, FlashableComponent? flashable = null)
         {
+            if (!Resolve(target, ref flashable, false)) return;
+
             var attempt = new FlashAttemptEvent(target, user, used);
-            RaiseLocalEvent(target, attempt);
+            RaiseLocalEvent(target, attempt, true);
 
             if (attempt.Cancelled)
                 return;
 
-            if (EntityManager.TryGetComponent<FlashableComponent>(target, out var flashable))
+            flashable.LastFlash = _gameTiming.CurTime;
+            flashable.Duration = flashDuration / 1000f; // TODO: Make this sane...
+            Dirty(flashable);
+
+            _stunSystem.TrySlowdown(target, TimeSpan.FromSeconds(flashDuration/1000f), true,
+                slowTo, slowTo);
+
+            if (displayPopup && user != null && target != user && EntityManager.EntityExists(user.Value))
             {
-                flashable.LastFlash = _gameTiming.CurTime;
-                flashable.Duration = flashDuration / 1000f; // TODO: Make this sane...
-                flashable.Dirty();
-
-                _stunSystem.TrySlowdown(target, TimeSpan.FromSeconds(flashDuration/1000f), true,
-                    slowTo, slowTo);
-
-                if (displayPopup && user != null && target != user && EntityManager.EntityExists(user.Value))
-                {
-                    user.Value.PopupMessage(target, Loc.GetString("flash-component-user-blinds-you",
-                        ("user", user.Value)));
-                }
+                user.Value.PopupMessage(target, Loc.GetString("flash-component-user-blinds-you",
+                    ("user", Identity.Entity(user.Value, EntityManager))));
             }
         }
 
-        public void FlashArea(EntityUid source, EntityUid? user, float range, float duration, float slowTo = 0f, bool displayPopup = false, SoundSpecifier? sound = null)
+        public void FlashArea(EntityUid source, EntityUid? user, float range, float duration, float slowTo = 0.8f, bool displayPopup = false, SoundSpecifier? sound = null)
         {
             var transform = EntityManager.GetComponent<TransformComponent>(source);
+            var mapPosition = transform.MapPosition;
             var flashableEntities = new List<EntityUid>();
+            var flashableQuery = GetEntityQuery<FlashableComponent>();
 
             foreach (var entity in _entityLookup.GetEntitiesInRange(transform.Coordinates, range))
             {
-                if (!EntityManager.HasComponent<FlashableComponent>(entity))
+                if (!flashableQuery.HasComponent(entity))
                     continue;
 
                 flashableEntities.Add(entity);
@@ -153,14 +144,15 @@ namespace Content.Server.Flash
             foreach (var entity in flashableEntities)
             {
                 // Check for unobstructed entities while ignoring the mobs with flashable components.
-                if (!transform.InRangeUnobstructed(entity, range, CollisionGroup.Opaque, (e) => flashableEntities.Contains(e)))
+                if (!_interactionSystem.InRangeUnobstructed(entity, mapPosition, range, CollisionGroup.Opaque, (e) => flashableEntities.Contains(e) || e == source))
                     continue;
 
-                Flash(entity, user, source, duration, slowTo, displayPopup);
+                // They shouldn't have flash removed in between right?
+                Flash(entity, user, source, duration, slowTo, displayPopup, flashableQuery.GetComponent(entity));
             }
             if (sound != null)
             {
-                SoundSystem.Play(Filter.Pvs(transform), sound.GetSound(), transform.Coordinates);
+                SoundSystem.Play(sound.GetSound(), Filter.Pvs(transform), source);
             }
         }
 
@@ -186,9 +178,13 @@ namespace Content.Server.Flash
 
         private void OnInventoryFlashAttempt(EntityUid uid, InventoryComponent component, FlashAttemptEvent args)
         {
-            // Forward the event to the glasses, if any.
-            if(_inventorySystem.TryGetSlotEntity(uid, "eyes", out var slotEntity, component))
-                RaiseLocalEvent(slotEntity.Value, args);
+            foreach (var slot in new[] { "head", "eyes", "mask" })
+            {
+                if (args.Cancelled)
+                    break;
+                if (_inventorySystem.TryGetSlotEntity(uid, slot, out var item, component))
+                    RaiseLocalEvent(item.Value, args, true);
+            }
         }
 
         private void OnFlashImmunityFlashAttempt(EntityUid uid, FlashImmunityComponent component, FlashAttemptEvent args)
@@ -198,7 +194,7 @@ namespace Content.Server.Flash
         }
     }
 
-    public class FlashAttemptEvent : CancellableEntityEventArgs
+    public sealed class FlashAttemptEvent : CancellableEntityEventArgs
     {
         public readonly EntityUid Target;
         public readonly EntityUid? User;

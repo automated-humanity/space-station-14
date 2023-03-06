@@ -39,6 +39,9 @@
   parent: FoodDonutBase
   id: FoodDonutPlain
   components:
+  - type: FlavorProfile
+    flavors:
+      - sweet
   - type: Sprite
     state: plain
 
@@ -47,8 +50,20 @@
   parent: FoodDonutBase
   id: FoodDonutJellyPlain
   components:
+  - type: FlavorProfile
+    flavors:
+      - jelly
   - type: Sprite
     state: jelly-plain
+  - type: SolutionContainerManager
+    solutions:
+      food:
+        maxVol: 5
+        reagents:
+        - ReagentId: Nutriment
+          Quantity: 3
+        - ReagentId: Vitamin
+          Quantity: 1
 
 # Donuts
 
@@ -57,10 +72,13 @@
   parent: FoodDonutBase
   id: FoodDonutHomer
   components:
+  - type: FlavorProfile
+    flavors:
+      - pink
   - type: Sprite
     state: homer
   - type: Item
-    HeldPrefix: pink
+    heldPrefix: pink
 
 - type: entity
   name: chaos donut
@@ -68,6 +86,12 @@
   id: FoodDonutChaos
   description: Like life, it never quite tastes the same.
   components:
+  - type: FlavorProfile
+    flavors:
+      - sweet
+      - funny
+      - magical
+      - tingly
   - type: Sprite
     state: chaos
 # Tastes like donut, chaos.
@@ -78,6 +102,9 @@
   id: FoodDonutMeat
   description: Tastes as gross as it looks.
   components:
+  - type: FlavorProfile
+    flavors:
+      - meaty
   - type: Sprite
     state: meat
 # Tastes like meat.
@@ -88,10 +115,13 @@
   id: FoodDonutPink
   description: Goes great with a soy latte.
   components:
+  - type: FlavorProfile
+    flavors:
+      - pink
   - type: Sprite
     state: pink
   - type: Item
-    HeldPrefix: pink
+    heldPrefix: pink
 
 - type: entity
   name: spaceman's donut
@@ -109,6 +139,10 @@
   id: FoodDonutApple
   description: Goes great with a shot of cinnamon schnapps.
   components:
+  - type: FlavorProfile
+    flavors:
+      - sweet
+      - apple
   - type: Sprite
     state: green
 # Tastes like donut, green apples.
@@ -129,6 +163,9 @@
   id: FoodDonutChocolate
   description: Goes great with a glass of warm milk.
   components:
+  - type: FlavorProfile
+    flavors:
+      - chocolate
   - type: Sprite
     state: choc
   - type: SolutionContainerManager
@@ -158,6 +195,10 @@
   id: FoodDonutBungo
   description: Goes great with a mason jar of hippie's delight.
   components:
+  - type: FlavorProfile
+    flavors:
+      - sweet
+      - bungo
   - type: Sprite
     state: yellow
 # Tastes like donut, tropical sweetness.
@@ -168,6 +209,9 @@
   id: FoodDonut
   description: The L-theanine in this donut is relaxing, yet not euphoric. Goes great with a cup of tea.
   components:
+  - type: FlavorProfile
+    flavors:
+      - tea
   - type: Sprite
     state: olive
 # Tastes like donut, matcha.
@@ -193,7 +237,16 @@
   - type: Sprite
     state: jelly-homer
   - type: Item
-    HeldPrefix: pink
+    heldPrefix: pink
+  - type: SolutionContainerManager
+    solutions:
+      food:
+        maxVol: 5
+        reagents:
+        - ReagentId: Nutriment
+          Quantity: 3
+        - ReagentId: Vitamin
+          Quantity: 1
 
 - type: entity
   name: pink jelly-donut
@@ -204,7 +257,16 @@
   - type: Sprite
     state: jelly-pink
   - type: Item
-    HeldPrefix: pink
+    heldPrefix: pink
+  - type: SolutionContainerManager
+    solutions:
+      food:
+        maxVol: 5
+        reagents:
+        - ReagentId: Nutriment
+          Quantity: 3
+        - ReagentId: Vitamin
+          Quantity: 1
 
 - type: entity
   name: spaceman's jelly-donut
@@ -214,6 +276,15 @@
   components:
   - type: Sprite
     state: jelly-purple
+  - type: SolutionContainerManager
+    solutions:
+      food:
+        maxVol: 5
+        reagents:
+        - ReagentId: Nutriment
+          Quantity: 3
+        - ReagentId: Vitamin
+          Quantity: 1
 # Tastes like jelly-donut, violets.
 
 - type: entity
@@ -224,6 +295,15 @@
   components:
   - type: Sprite
     state: jelly-green
+  - type: SolutionContainerManager
+    solutions:
+      food:
+        maxVol: 5
+        reagents:
+        - ReagentId: Nutriment
+          Quantity: 3
+        - ReagentId: Vitamin
+          Quantity: 1
 # Tastes like jelly-donut, green apples.
 
 - type: entity
@@ -234,6 +314,15 @@
   components:
   - type: Sprite
     state: jelly-beige
+  - type: SolutionContainerManager
+    solutions:
+      food:
+        maxVol: 5
+        reagents:
+        - ReagentId: Nutriment
+          Quantity: 3
+        - ReagentId: Vitamin
+          Quantity: 1
 # Tastes like jelly-donut, buttery sweetness.
 
 - type: entity
@@ -253,6 +342,8 @@
           Quantity: 3
         - ReagentId: Theobromine
           Quantity: 1
+        - ReagentId: Vitamin
+          Quantity: 1
 # Tastes like jelly-donut, bitterness.
 
 - type: entity
@@ -263,6 +354,15 @@
   components:
   - type: Sprite
     state: jelly-blue
+  - type: SolutionContainerManager
+    solutions:
+      food:
+        maxVol: 5
+        reagents:
+        - ReagentId: Nutriment
+          Quantity: 3
+        - ReagentId: Vitamin
+          Quantity: 1
 # Tastes like jelly-donut, blumpkin.
 
 - type: entity
@@ -273,6 +373,15 @@
   components:
   - type: Sprite
     state: jelly-yellow
+  - type: SolutionContainerManager
+    solutions:
+      food:
+        maxVol: 5
+        reagents:
+        - ReagentId: Nutriment
+          Quantity: 3
+        - ReagentId: Vitamin
+          Quantity: 1
 # Tastes like jelly-donut, tropical sweetness.
 
 - type: entity
@@ -283,6 +392,15 @@
   components:
   - type: Sprite
     state: jelly-olive
+  - type: SolutionContainerManager
+    solutions:
+      food:
+        maxVol: 5
+        reagents:
+        - ReagentId: Nutriment
+          Quantity: 3
+        - ReagentId: Vitamin
+          Quantity: 1
 # Tastes like jelly-donut, matcha.
 
 - type: entity
@@ -293,14 +411,45 @@
   components:
   - type: Sprite
     state: jelly-laugh
+  - type: SolutionContainerManager
+    solutions:
+      food:
+        maxVol: 5
+        reagents:
+        - ReagentId: Nutriment
+          Quantity: 3
+        - ReagentId: Vitamin
+          Quantity: 1
 # Tastes like jelly-donut, fizzy tutti frutti.
 
 - type: entity
   name: slugcat jelly-donut
   parent: FoodDonutBase
   id: FoodDonutJellySlugcat
-  description: No holes in this donut incase a suspicious looking pole shows up.
+  description: No holes in this donut in case a suspicious looking pole shows up.
   components:
   - type: Sprite
     state: jelly-slug
+  - type: SolutionContainerManager
+    solutions:
+      food:
+        maxVol: 5
+        reagents:
+        - ReagentId: Nutriment
+          Quantity: 3
+        - ReagentId: Vitamin
+          Quantity: 1
 # Tastes like jelly-donut, fizzy tutti frutti.
+
+# Poison donut
+- type: entity
+  parent: FoodDonutPink
+  id: FoodDonutPoison
+  components:
+  - type: SolutionContainerManager
+    solutions:
+      food:
+        maxVol: 10
+        reagents:
+        - ReagentId: Amatoxin
+          Quantity: 10

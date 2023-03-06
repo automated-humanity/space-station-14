@@ -1,16 +1,13 @@
-﻿using System;
-using System.Text;
+﻿using System.Text;
 using Content.Server.Database;
 using Content.Shared.Administration;
 using Robust.Server.Player;
 using Robust.Shared.Console;
-using Robust.Shared.IoC;
-
 
 namespace Content.Server.Administration.Commands
 {
     [AdminCommand(AdminFlags.Ban)]
-    public class PardonCommand : IConsoleCommand
+    public sealed class PardonCommand : IConsoleCommand
     {
         public string Command => "pardon";
         public string Description => "Pardons somebody's ban";
@@ -29,7 +26,7 @@ namespace Content.Server.Administration.Commands
 
             if (!int.TryParse(args[0], out var banId))
             {
-                shell.WriteLine($"Unable to parse {args[1]} as a ban id integer.\n{Help}");
+                shell.WriteLine($"Unable to parse {args[0]} as a ban id integer.\n{Help}");
                 return;
             }
 

@@ -6,7 +6,7 @@ using Robust.Shared.Prototypes;
 
 namespace Content.Client.CombatMode
 {
-    public class ColoredScreenBorderOverlay : Overlay
+    public sealed class ColoredScreenBorderOverlay : Overlay
     {
         [Dependency] private readonly IPrototypeManager _prototypeManager = default!;
 
@@ -25,6 +25,7 @@ namespace Content.Client.CombatMode
             worldHandle.UseShader(_shader);
             var viewport = args.WorldAABB;
             worldHandle.DrawRect(viewport, Color.White);
+            worldHandle.UseShader(null);
         }
     }
 }

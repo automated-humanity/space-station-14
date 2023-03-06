@@ -1,7 +1,3 @@
-using Robust.Shared.GameObjects;
-using Robust.Shared.Serialization.Manager.Attributes;
-using Robust.Shared.ViewVariables;
-
 namespace Content.Shared.Examine
 {
     /// <summary>
@@ -10,16 +6,12 @@ namespace Content.Shared.Examine
     [RegisterComponent]
     public sealed class ExaminerComponent : Component
     {
-        public override string Name => "Examiner";
+        [ViewVariables(VVAccess.ReadWrite)]
+        [DataField("skipChecks")]
+        public bool SkipChecks = false;
 
         [ViewVariables(VVAccess.ReadWrite)]
-        [DataField("DoRangeCheck")]
-        private bool _doRangeCheck = true;
-
-        /// <summary>
-        ///     Whether to do a distance check on examine.
-        ///     If false, the user can theoretically examine from infinitely far away.
-        /// </summary>
-        public bool DoRangeCheck => _doRangeCheck;
+        [DataField("checkInRangeUnOccluded")]
+        public bool CheckInRangeUnOccluded = true;
     }
 }

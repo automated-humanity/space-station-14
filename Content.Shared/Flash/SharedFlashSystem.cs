@@ -1,4 +1,3 @@
-using Robust.Shared.GameObjects;
 using Robust.Shared.GameStates;
 
 namespace Content.Shared.Flash
@@ -9,18 +8,10 @@ namespace Content.Shared.Flash
         {
             base.Initialize();
 
-            SubscribeLocalEvent<SharedFlashableComponent, ComponentGetState>(OnFlashableGetState);
-            SubscribeLocalEvent<SharedFlashableComponent, ComponentGetStateAttemptEvent>(OnGetStateAttempt);
+            SubscribeLocalEvent<FlashableComponent, ComponentGetState>(OnFlashableGetState);
         }
 
-        private void OnGetStateAttempt(EntityUid uid, SharedFlashableComponent component, ComponentGetStateAttemptEvent args)
-        {
-            // Only send state to the player attached to the entity.
-            if (args.Player.AttachedEntity != uid)
-                args.Cancel();
-        }
-
-        private void OnFlashableGetState(EntityUid uid, SharedFlashableComponent component, ref ComponentGetState args)
+        private static void OnFlashableGetState(EntityUid uid, FlashableComponent component, ref ComponentGetState args)
         {
             args.State = new FlashableComponentState(component.Duration, component.LastFlash);
         }

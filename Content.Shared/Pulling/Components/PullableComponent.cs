@@ -1,9 +1,4 @@
-using System;
-using Robust.Shared.Analyzers;
-using Robust.Shared.GameObjects;
 using Robust.Shared.GameStates;
-using Robust.Shared.IoC;
-using Robust.Shared.Log;
 using Robust.Shared.Map;
 using Robust.Shared.Physics.Dynamics.Joints;
 using Robust.Shared.Serialization;
@@ -12,81 +7,42 @@ namespace Content.Shared.Pulling.Components
 {
     // Before you try to add another type than SharedPullingStateManagementSystem, consider the can of worms you may be opening!
     [NetworkedComponent()]
-    [Friend(typeof(SharedPullingStateManagementSystem))]
+    [Access(typeof(SharedPullingStateManagementSystem))]
     [RegisterComponent]
-    public class SharedPullableComponent : Component
+    public sealed class SharedPullableComponent : Component
     {
-        public override string Name => "Pullable";
-
-        public float? MaxDistance => PullJoint?.MaxLength;
-
         /// <summary>
         /// The current entity pulling this component.
-        /// SharedPullingStateManagementSystem should be writing this. This means definitely not you.
         /// </summary>
         public EntityUid? Puller { get; set; }
+
         /// <summary>
         /// The pull joint.
-        /// SharedPullingStateManagementSystem should be writing this. This means probably not you.
         /// </summary>
-        public DistanceJoint? PullJoint { get; set; }
+        public string? PullJointId { get; set; }
 
-        public bool BeingPulled => Puller != default;
+        public bool BeingPulled => Puller != null;
 
+        [Access(typeof(SharedPullingStateManagementSystem), Other = AccessPermissions.ReadExecute)] // FIXME Friends
         public EntityCoordinates? MovingTo { get; set; }
 
-        public override ComponentState GetComponentState()
-        {
-            return new PullableComponentState(Puller);
-        }
+        /// <summary>
+        /// If the physics component has FixedRotation should we keep it upon being pulled
+        /// </summary>
+        [Access(typeof(SharedPullingSystem), Other = AccessPermissions.ReadExecute)]
+        [ViewVariables(VVAccess.ReadWrite), DataField("fixedRotation")]
+        public bool FixedRotationOnPull { get; set; }
 
-        public override void HandleComponentState(ComponentState? curState, ComponentState? nextState)
-        {
-            base.HandleComponentState(curState, nextState);
-
-            if (curState is not PullableComponentState state)
-            {
-                return;
-            }
-
-            if (!state.Puller.HasValue)
-            {
-                EntitySystem.Get<SharedPullingStateManagementSystem>().ForceDisconnectPullable(this);
-                return;
-            }
-
-            if (!state.Puller.Value.IsValid())
-            {
-                Logger.Error($"Invalid entity {state.Puller.Value} for pulling");
-                return;
-            }
-
-            if (Puller == state.Puller)
-            {
-                // don't disconnect and reconnect a puller for no reason
-                return;
-            }
-
-            if (!IoCManager.Resolve<IEntityManager>().TryGetComponent<SharedPullerComponent?>(state.Puller.Value, out var comp))
-            {
-                Logger.Error($"Entity {state.Puller.Value} for pulling had no Puller component");
-                // ensure it disconnects from any different puller, still
-                EntitySystem.Get<SharedPullingStateManagementSystem>().ForceDisconnectPullable(this);
-                return;
-            }
-
-            EntitySystem.Get<SharedPullingStateManagementSystem>().ForceRelationship(comp, this);
-        }
-
-        protected override void Shutdown()
-        {
-            EntitySystem.Get<SharedPullingStateManagementSystem>().ForceDisconnectPullable(this);
-            base.Shutdown();
-        }
+        /// <summary>
+        /// What the pullable's fixedrotation was set to before being pulled.
+        /// </summary>
+        [Access(typeof(SharedPullingSystem), Other = AccessPermissions.ReadExecute)]
+        [ViewVariables]
+        public bool PrevFixedRotation;
 
         protected override void OnRemove()
         {
-            if (Puller != default)
+            if (Puller != null)
             {
                 // This is absolute paranoia but it's also absolutely necessary. Too many puller state bugs. - 20kdc
                 Logger.ErrorS("c.go.c.pulling", "PULLING STATE CORRUPTION IMMINENT IN PULLABLE {0} - OnRemove called when Puller is set!", Owner);
@@ -96,7 +52,7 @@ namespace Content.Shared.Pulling.Components
     }
 
     [Serializable, NetSerializable]
-    public class PullableComponentState : ComponentState
+    public sealed class PullableComponentState : ComponentState
     {
         public readonly EntityUid? Puller;
 

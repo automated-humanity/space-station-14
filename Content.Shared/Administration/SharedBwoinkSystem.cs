@@ -1,9 +1,6 @@
 ﻿#nullable enable
-using System;
 using Robust.Shared.Network;
 using Robust.Shared.Serialization;
-using Robust.Shared.GameObjects;
-using Robust.Shared.Log;
 
 namespace Content.Shared.Administration
 {
@@ -26,22 +23,23 @@ namespace Content.Shared.Administration
 
         protected void LogBwoink(BwoinkTextMessage message)
         {
-            Logger.InfoS("c.s.go.es.bwoink", $"@{message.ChannelId}: {message.Text}");
         }
 
         [Serializable, NetSerializable]
         public sealed class BwoinkTextMessage : EntityEventArgs
         {
-            public NetUserId ChannelId { get; }
+            public DateTime SentAt { get; }
+            public NetUserId UserId { get; }
             // This is ignored from the client.
             // It's checked by the client when receiving a message from the server for bwoink noises.
             // This could be a boolean "Incoming", but that would require making a second instance.
             public NetUserId TrueSender { get; }
             public string Text { get; }
 
-            public BwoinkTextMessage(NetUserId channelId, NetUserId trueSender, string text)
+            public BwoinkTextMessage(NetUserId userId, NetUserId trueSender, string text, DateTime? sentAt = default)
             {
-                ChannelId = channelId;
+                SentAt = sentAt ?? DateTime.Now;
+                UserId = userId;
                 TrueSender = trueSender;
                 Text = text;
             }

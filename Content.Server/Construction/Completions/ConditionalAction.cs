@@ -1,22 +1,19 @@
-using System.Threading.Tasks;
 using Content.Shared.Construction;
 using JetBrains.Annotations;
-using Robust.Shared.GameObjects;
-using Robust.Shared.Serialization.Manager.Attributes;
 
 namespace Content.Server.Construction.Completions
 {
     [UsedImplicitly]
     [DataDefinition]
-    public class ConditionalAction : IGraphAction
+    public sealed class ConditionalAction : IGraphAction
     {
-        [DataField("passUser")] public bool PassUser { get; } = false;
+        [DataField("passUser")] public bool PassUser { get; }
 
-        [DataField("condition", required:true)] public IGraphCondition? Condition { get; } = null;
+        [DataField("condition", required:true)] public IGraphCondition? Condition { get; }
 
-        [DataField("action", required:true)] public IGraphAction? Action { get; } = null;
+        [DataField("action", required:true)] public IGraphAction? Action { get; }
 
-        [DataField("else")] public IGraphAction? Else { get; } = null;
+        [DataField("else")] public IGraphAction? Else { get; }
 
         public void PerformAction(EntityUid uid, EntityUid? userUid, IEntityManager entityManager)
         {

@@ -1,14 +1,12 @@
-﻿using System.Collections.Generic;
-using Content.Shared.Construction.Conditions;
+﻿using Content.Shared.Construction.Conditions;
 using Robust.Shared.Prototypes;
-using Robust.Shared.Serialization.Manager.Attributes;
+using Robust.Shared.Serialization.TypeSerializers.Implementations.Custom.Prototype;
 using Robust.Shared.Utility;
-using Robust.Shared.ViewVariables;
 
 namespace Content.Shared.Construction.Prototypes
 {
     [Prototype("construction")]
-    public class ConstructionPrototype : IPrototype
+    public sealed class ConstructionPrototype : IPrototype
     {
         [DataField("conditions")] private List<IConstructionCondition> _conditions = new();
 
@@ -27,7 +25,7 @@ namespace Content.Shared.Construction.Prototypes
         /// <summary>
         ///     The <see cref="ConstructionGraphPrototype"/> this construction will be using.
         /// </summary>
-        [DataField("graph")]
+        [DataField("graph", customTypeSerializer:typeof(PrototypeIdSerializer<ConstructionGraphPrototype>))]
         public string Graph { get; } = string.Empty;
 
         /// <summary>
@@ -49,17 +47,23 @@ namespace Content.Shared.Construction.Prototypes
         public SpriteSpecifier Icon { get; } = SpriteSpecifier.Invalid;
 
         /// <summary>
+        ///     Texture paths used for the construction ghost.
+        /// </summary>
+        [DataField("layers")]
+        private List<SpriteSpecifier>? _layers;
+
+        /// <summary>
         ///     If you can start building or complete steps on impassable terrain.
         /// </summary>
         [DataField("canBuildInImpassable")]
         public bool CanBuildInImpassable { get; private set; }
 
-        [DataField("category")] public string Category { get; private set; } = string.Empty;
+        [DataField("category")] public string Category { get; private set; } = "";
 
         [DataField("objectType")] public ConstructionType Type { get; private set; } = ConstructionType.Structure;
 
         [ViewVariables]
-        [DataField("id", required: true)]
+        [IdDataField]
         public string ID { get; } = default!;
 
         [DataField("placementMode")]
@@ -72,6 +76,7 @@ namespace Content.Shared.Construction.Prototypes
         public bool CanRotate { get; } = true;
 
         public IReadOnlyList<IConstructionCondition> Conditions => _conditions;
+        public IReadOnlyList<SpriteSpecifier> Layers => _layers ?? new List<SpriteSpecifier>{Icon};
     }
 
     public enum ConstructionType

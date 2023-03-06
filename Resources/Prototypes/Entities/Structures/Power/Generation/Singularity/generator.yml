@@ -8,6 +8,7 @@
   - type: Sprite
     sprite: Structures/Power/Generation/Singularity/generator.rsi
     state: icon
+    netsync: false
   - type: SingularityGenerator
   - type: InteractionOutline
   - type: Clickable
@@ -19,13 +20,17 @@
         # Using a circle here makes it a lot easier to pull it all the way from Cargo
         !type:PhysShapeCircle
           radius: 0.45
-      mass: 25
+      density: 190
       # Keep an eye on ParticlesProjectile when adjusting these
+      mask:
+      - MachineMask
       layer:
       - Opaque
-      mask:
-      - MobImpassable
   - type: Transform
     anchored: true
+    noRot: true
   - type: Anchorable
   - type: Pullable
+  - type: GuideHelp
+    guides: [ Singularity, Power ]
+  

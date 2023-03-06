@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Content.Shared.Singularity.Components;
 using JetBrains.Annotations;
 using Robust.Client.Animations;
@@ -10,7 +10,7 @@ using Robust.Shared.Serialization;
 namespace Content.Client.Singularity.Visualizers
 {
     [UsedImplicitly]
-    public class RadiationCollectorVisualizer : AppearanceVisualizer, ISerializationHooks
+    public sealed class RadiationCollectorVisualizer : AppearanceVisualizer, ISerializationHooks
     {
         private const string AnimationKey = "radiationcollector_animation";
 
@@ -44,18 +44,20 @@ namespace Content.Client.Singularity.Visualizers
             }
         }
 
+        [Obsolete("Subscribe to your component being initialised instead.")]
         public override void InitializeEntity(EntityUid entity)
         {
             IoCManager.Resolve<IEntityManager>().EnsureComponent<AnimationPlayerComponent>(entity);
         }
 
+        [Obsolete("Subscribe to AppearanceChangeEvent instead.")]
         public override void OnChangeData(AppearanceComponent component)
         {
             base.OnChangeData(component);
 
             var entities = IoCManager.Resolve<IEntityManager>();
-            if (!entities.TryGetComponent(component.Owner, out ISpriteComponent sprite)) return;
-            if (!entities.TryGetComponent(component.Owner, out AnimationPlayerComponent animPlayer)) return;
+            if (!entities.TryGetComponent(component.Owner, out SpriteComponent? sprite)) return;
+            if (!entities.TryGetComponent(component.Owner, out AnimationPlayerComponent? animPlayer)) return;
             if (!component.TryGetData(RadiationCollectorVisuals.VisualState, out RadiationCollectorVisualState state))
             {
                 state = RadiationCollectorVisualState.Deactive;

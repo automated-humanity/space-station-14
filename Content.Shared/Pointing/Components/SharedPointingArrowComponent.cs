@@ -1,9 +1,13 @@
-﻿using Robust.Shared.GameObjects;
+using Robust.Shared.GameStates;
 
-namespace Content.Shared.Pointing.Components
+namespace Content.Shared.Pointing.Components;
+
+[NetworkedComponent]
+public abstract class SharedPointingArrowComponent : Component
 {
-    public class SharedPointingArrowComponent : Component
-    {
-        public sealed override string Name => "PointingArrow";
-    }
+    /// <summary>
+    /// When the pointing arrow ends
+    /// </summary>
+    [ViewVariables(VVAccess.ReadWrite), DataField("endTime")]
+    public TimeSpan EndTime;
 }

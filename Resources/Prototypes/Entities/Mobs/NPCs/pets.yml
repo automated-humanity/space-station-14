@@ -2,47 +2,9 @@
 #1D2L3U4R
 
 - type: entity
-  name: corgi
-  parent: SimpleMobBase
-  id: MobCorgi
-  description: Finally, a space corgi!
-  components:
-  - type: Sprite
-    drawdepth: Mobs
-    sprite: Mobs/Pets/corgi.rsi
-    layers:
-    - map: ["enum.DamageStateVisualLayers.Base"]
-      state: corgi
-  - type: Physics
-  - type: Fixtures
-    fixtures:
-    - shape:
-        !type:PhysShapeCircle
-        radius: 0.35
-      mass: 10
-      mask:
-      - Impassable
-      - MobImpassable #Bullets?!
-      - VaultImpassable
-      - SmallImpassable
-      layer:
-      - Opaque
-  - type: Appearance
-    visuals:
-    - type: DamageStateVisualizer
-      normal: corgi
-      crit: corgi_dead
-      dead: corgi_dead
-  - type: Butcherable
-    meat: FoodMeat
-    pieces: 3
-  - type: ReplacementAccent
-    accent: dog
-
-- type: entity
   name: Ian
   parent: MobCorgi
-  id: MobCorgiOld
+  id: MobCorgiIan
   description: Favorite pet corgi.
   components:
   - type: Sprite
@@ -52,123 +14,403 @@
     - map: ["enum.DamageStateVisualLayers.Base"]
       state: ian
   - type: Appearance
-    visuals:
-    - type: DamageStateVisualizer
-      normal: ian
-      crit: ian_dead
-      dead: ian_dead
+  - type: DamageStateVisuals
+    states:
+      Alive:
+        Base: ian
+      Critical:
+        Base: ian_dead
+      Dead:
+        Base: ian_dead
+  - type: Grammar
+    attributes:
+      proper: true
+      gender: male
+  - type: Butcherable
+    spawned:
+    - id: FoodMeatCorgi
+      amount: 2
 
 - type: entity
-  name: cat
-  parent: SimpleMobBase
-  id: MobCat
-  description: Feline pet, very funny.
+  name: Old Ian
+  parent: MobCorgi
+  id: MobCorgiIanOld
+  description: Still the favorite pet corgi. Love his wheels.
   components:
   - type: Sprite
     drawdepth: Mobs
-    sprite: Mobs/Pets/cat.rsi
+    sprite: Mobs/Pets/corgi.rsi
     layers:
     - map: ["enum.DamageStateVisualLayers.Base"]
-      state: cat
+      state: old_ian
+  - type: Appearance
+  - type: DamageStateVisuals
+    states:
+      Alive:
+        Base: old_ian
+      Critical:
+        Base: old_ian_dead
+      Dead:
+        Base: old_ian_dead
+  - type: Grammar
+    attributes:
+      proper: true
+      gender: male
+
+
+- type: entity
+  name: Lisa
+  parent: MobCorgi
+  id: MobCorgiLisa
+  description: Ian's favorite corgi.
+  components:
+  - type: Sprite
+    drawdepth: Mobs
+    sprite: Mobs/Pets/corgi.rsi
+    layers:
+    - map: ["enum.DamageStateVisualLayers.Base"]
+      state: lisa
+  - type: Appearance
+  - type: DamageStateVisuals
+    states:
+      Alive:
+        Base: lisa
+      Critical:
+        Base: lisa_dead
+      Dead:
+        Base: lisa_dead
+  - type: Grammar
+    attributes:
+      proper: true
+      gender: female
+
+- type: entity
+  name: Runtime
+  parent: MobCat
+  id: MobCatRuntime
+  description: Professional mouse hunter. Escape artist.
+  components:
+  - type: Grammar
+    attributes:
+      gender: female
+
+- type: entity
+  name: Exception
+  id: MobCatException
+  parent: MobCatCalico
+  description: Ask nicely, and maybe they'll give you one of their spare lives.
+  components:
+  - type: Grammar
+    attributes:
+      gender: male
+
+- type: entity
+  name: Floppa
+  id: MobCatFloppa
+  parent: MobCatCaracal
+  description: He out here.
+  components:
+  - type: Fixtures
+    fixtures:
+    - shape:
+        !type:PhysShapeCircle
+        radius: 0.35
+      density: 40
+      mask:
+      - MobMask
+      layer:
+      - MobLayer
+  - type: Grammar
+    attributes:
+      gender: male
+
+- type: entity
+  name: Bandito
+  parent: MobFerret
+  id: MobBandito
+  description: Just a silly little guy!
+  components:
+  - type: Grammar
+    attributes:
+      gender: male
+
+- type: entity
+  name: bingus
+  parent: SimpleMobBase
+  id: MobBingus
+  description: Bingus my beloved...
+  components:
+  - type: Sprite
+    drawdepth: Mobs
+    sprite: Mobs/Pets/bingus.rsi
+    layers:
+    - map: ["enum.DamageStateVisualLayers.Base"]
+      state: bingus
   - type: Physics
   - type: Fixtures
     fixtures:
     - shape:
         !type:PhysShapeCircle
         radius: 0.35
-      mass: 10
+      density: 12
       mask:
-      - Impassable
-      - MobImpassable #Bullets?!
-      - VaultImpassable
-      - SmallImpassable
+      - MobMask
       layer:
-      - Opaque
+      - MobLayer
   - type: Appearance
-    visuals:
-    - type: DamageStateVisualizer
-      normal: cat
-      crit: cat_dead
-      dead: cat_dead
+  - type: Inventory
+    speciesId: cat
+    templateId: pet
+  - type: Strippable
+  - type: UserInterface
+    interfaces:
+    - key: enum.StrippingUiKey.Key
+      type: StrippableBoundUserInterface
+  - type: DamageStateVisuals
+    states:
+      Alive:
+        Base: bingus
+      Critical:
+        Base: bingus_dead
+      Dead:
+        Base: bingus_dead
   - type: Butcherable
-    meat: FoodMeat
-    pieces: 2
+    spawned:
+    - id: FoodMeat
+      amount: 2
+  - type: InteractionPopup
+    successChance: 0.9
+    interactSuccessString: petting-success-cat
+    interactFailureString: petting-failure-generic
+    interactSuccessSound:
+      path: /Audio/Animals/cat_meow.ogg
+  - type: Grammar
+    attributes:
+      gender: epicene
+
+- type: entity
+  name: mcgriff
+  parent: SimpleMobBase
+  id: MobMcGriff
+  description: This dog can tell something smells around here, and that something is CRIME!
+  components:
+  - type: Sprite
+    drawdepth: Mobs
+    sprite: Mobs/Pets/mcgriff.rsi
+    layers:
+    - map: ["enum.DamageStateVisualLayers.Base"]
+      state: mcgriff
+  - type: Physics
+  - type: Fixtures
+    fixtures:
+    - shape:
+        !type:PhysShapeCircle
+        radius: 0.35
+      density: 20
+      mask:
+      - MobMask
+      layer:
+      - MobLayer
+  - type: Appearance
+  - type: Inventory
+    speciesId: puppy
+    templateId: pet
+  - type: Strippable
+  - type: UserInterface
+    interfaces:
+    - key: enum.StrippingUiKey.Key
+      type: StrippableBoundUserInterface
+  - type: DamageStateVisuals
+    states:
+      Alive:
+        Base: mcgriff
+      Critical:
+        Base: mcgriff_dead
+      Dead:
+        Base: mcgriff_dead
+  - type: Butcherable
+    spawned:
+    - id: FoodMeat
+      amount: 2
   - type: ReplacementAccent
-    accent: cat
+    accent: dog
+  - type: InteractionPopup
+    successChance: 0.5
+    interactSuccessString: petting-success-dog
+    interactFailureString: petting-failure-generic
+    interactSuccessSound:
+      path: /Audio/Animals/small_dog_bark_happy.ogg
+  - type: Grammar
+    attributes:
+      proper: true
+      gender: male
 
 - type: entity
-  name: calico cat
-  id: MobCatCalico
-  parent: MobCat
-  description: Feline pet, very funny.
+  name: Paperwork
+  parent: MobSloth
+  id: MobPaperwork
+  description: Took up a new job sorting books in the library after he got transferred from Space Station 13. He seems to be just as slow at this.
   components:
   - type: Sprite
     drawdepth: Mobs
-    sprite: Mobs/Pets/cat.rsi
+    sprite: Mobs/Pets/paperwork.rsi
     layers:
     - map: ["enum.DamageStateVisualLayers.Base"]
-      state: cat2
+      state: paperwork
   - type: Appearance
-    visuals:
-    - type: DamageStateVisualizer
-      normal: cat2
-      crit: cat2_dead
-      dead: cat2_dead
+  - type: DamageStateVisuals
+    states:
+      Alive:
+        Base: paperwork
+      Critical:
+        Base: paperwork_dead
+      Dead:
+        Base: paperwork_dead
+  - type: Butcherable
+    spawned:
+    - id: FoodMeat
+      amount: 3
+  - type: InteractionPopup
+    successChance: 1
+    interactSuccessString: petting-success-sloth
+    interactFailureString: petting-failure-sloth
+  - type: Grammar
+    attributes:
+      proper: true
+      gender: male
 
 - type: entity
-  name: caracal cat
-  id: MobCatCaracal
-  parent: MobCat
-  description: Hilarious.
-  components:
-  - type: Sprite
-    drawdepth: Mobs
-    sprite: Mobs/Pets/caracal.rsi
-    layers:
-    - map: ["enum.DamageStateVisualLayers.Base"]
-      state: caracal_flop
-  - type: Appearance
-    visuals:
-    - type: DamageStateVisualizer
-      normal: caracal_flop
-      crit: caracal_dead
-      dead: caracal_dead
-
-- type: entity
-  name: sloth
+  name: Walter
   parent: SimpleMobBase
-  id: MobSloth
-  description: Very slow animal. For people with low energy.
+  id: MobWalter
+  description: He likes chems and treats. Walter.
   components:
-  - type: MovementSpeedModifier
-    baseWalkSpeed : 1
-    baseSprintSpeed : 1
   - type: Sprite
     drawdepth: Mobs
-    sprite: Mobs/Pets/sloth.rsi
+    sprite: Mobs/Pets/walter.rsi
     layers:
     - map: ["enum.DamageStateVisualLayers.Base"]
-      state: sloth
+      state: walter
   - type: Physics
   - type: Fixtures
     fixtures:
     - shape:
         !type:PhysShapeCircle
         radius: 0.35
-      mass: 10
+      density: 50
       mask:
-      - Impassable
-      - MobImpassable #Bullets?!
-      - VaultImpassable
-      - SmallImpassable
+      - MobMask
       layer:
-      - Opaque
+      - MobLayer
   - type: Appearance
-    visuals:
-    - type: DamageStateVisualizer
-      normal: sloth
-      crit: sloth_dead
-      dead: sloth_dead
+  - type: Inventory
+    speciesId: dog
+    templateId: pet
+  - type: Strippable
+  - type: UserInterface
+    interfaces:
+    - key: enum.StrippingUiKey.Key
+      type: StrippableBoundUserInterface
+  - type: DamageStateVisuals
+    states:
+      Alive:
+        Base: walter
+      Critical:
+        Base: walter_dead
+      Dead:
+        Base: walter_dead
   - type: Butcherable
-    meat: FoodMeat
-    pieces: 3
+    spawned:
+    - id: FoodMeat
+      amount: 3
+  - type: ReplacementAccent
+    accent: dog
+  - type: InteractionPopup
+    successChance: 0.7
+    interactSuccessString: petting-success-dog
+    interactFailureString: petting-failure-generic
+    interactSuccessSound:
+      path: /Audio/Animals/small_dog_bark_happy.ogg
+  - type: Grammar
+    attributes:
+      proper: true
+      gender: male
+
+- type: entity
+  name: Morty
+  parent: MobPossum
+  id: MobPossumMorty
+  description: The station's resident Didelphis virginiana. A sensitive but resilient kind of guy.
+  components:
+  - type: InteractionPopup
+    successChance: 1.0 # Hey, c'mon, this is Morty we're talking about here.
+  - type: Grammar
+    attributes:
+      proper: true
+      gender: male
+
+- type: entity
+  name: Morticia
+  parent: MobRaccoon
+  id: MobRaccoonMorticia
+  description: A powerful creature of the night. Her eyeshadow is always on point.
+  components:
+  - type: InteractionPopup
+    successChance: 0.7
+  - type: Grammar
+    attributes:
+      proper: true
+      gender: female
+
+- type: entity
+  name: Alexander
+  parent: MobPig
+  id: MobAlexander
+  description: Chef's finest colleague.
+  components:
+  - type: Grammar
+    attributes:
+      gender: male
+      
+- type: entity
+  name: Renault
+  parent: MobFox
+  id: MobFoxRenault
+  description: The captain's trustworthy fox.
+  components:
+  - type: InteractionPopup
+    successChance: 1
+  - type: Butcherable
+    spawned:
+    - id: FoodMeat
+      amount: 3
+    - id: Telecrystal5
+      amount: 1
+  - type: Grammar
+    attributes:
+      proper: true
+      gender: female
+
+- type: entity
+  name: Hamlet
+  parent: MobHamster
+  id: MobHamsterHamlet
+  description: A grumpy, cute and fluffy hamster.
+  components:
+  - type: GhostTakeoverAvailable
+    makeSentient: true
+    allowSpeech: true
+    allowMovement: true
+    name: ghost-role-information-hamlet-name
+    description: ghost-role-information-hamlet-description
+  - type: InteractionPopup
+    successChance: 1
+  - type: Butcherable
+    spawned:
+    - id: FoodMeat
+      amount: 1
+  - type: Grammar
+    attributes:
+      proper: true
+      gender: male
+

@@ -16,12 +16,6 @@
                           PlaceHolder="{Loc 'main-menu-username-text'}"
                           HorizontalExpand="True" />
             </BoxContainer>
-            <Button Name="JoinPublicServerButton"
-                    Access="Public"
-                    Text="{Loc 'main-menu-join-public-server-button'}"
-                    StyleIdentifier="mainMenu"
-                    TextAlign="Center" />
-            <Control MinSize="0 2" />
             <LineEdit Name="AddressBox"
                       Access="Public"
                       Text="localhost"
@@ -43,7 +37,9 @@
                     Text="{Loc 'main-menu-quit-button'}"
                     TextAlign="Center"
                     StyleIdentifier="mainMenu" />
-            <clog:ChangelogButton />
+            <clog:ChangelogButton
+                Name="ChangelogButton"
+                Access="Public"/>
         </BoxContainer>
         <Label Name="VersionLabel" Text="v0.1" />
     </LayoutContainer>

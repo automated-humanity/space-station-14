@@ -7,11 +7,11 @@ using static Content.Shared.AME.SharedAMEControllerComponent;
 namespace Content.Client.AME.UI
 {
     [UsedImplicitly]
-    public class AMEControllerBoundUserInterface : BoundUserInterface
+    public sealed class AMEControllerBoundUserInterface : BoundUserInterface
     {
         private AMEWindow? _window;
 
-        public AMEControllerBoundUserInterface(ClientUserInterfaceComponent owner, object uiKey) : base(owner, uiKey)
+        public AMEControllerBoundUserInterface(ClientUserInterfaceComponent owner, Enum uiKey) : base(owner, uiKey)
         {
         }
 

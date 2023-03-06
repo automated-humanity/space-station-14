@@ -5,13 +5,11 @@ using Content.Server.Singularity.EntitySystems;
 using Content.Shared.Administration;
 using Content.Shared.Singularity.Components;
 using Robust.Shared.Console;
-using Robust.Shared.GameObjects;
-using Robust.Shared.IoC;
 
 namespace Content.Server.Singularity
 {
     [AdminCommand(AdminFlags.Admin)]
-    public class StartSingularityEngineCommand : IConsoleCommand
+    public sealed class StartSingularityEngineCommand : IConsoleCommand
     {
         public string Command => "startsingularityengine";
         public string Description => "Automatically turns on the particle accelerator and containment field emitters.";
@@ -26,13 +24,14 @@ namespace Content.Server.Singularity
             }
 
             var entityManager = IoCManager.Resolve<IEntityManager>();
+            var entitySystemManager = IoCManager.Resolve<IEntitySystemManager>();
             foreach (var comp in entityManager.EntityQuery<EmitterComponent>())
             {
-                EntitySystem.Get<EmitterSystem>().SwitchOn(comp);
+                entitySystemManager.GetEntitySystem<EmitterSystem>().SwitchOn(comp);
             }
             foreach (var comp in entityManager.EntityQuery<RadiationCollectorComponent>())
             {
-                comp.Collecting = true;
+                entitySystemManager.GetEntitySystem<RadiationCollectorSystem>().SetCollectorEnabled(comp.Owner, true, null, comp);
             }
             foreach (var comp in entityManager.EntityQuery<ParticleAcceleratorControlBoxComponent>())
             {

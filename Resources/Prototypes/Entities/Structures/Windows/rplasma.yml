@@ -10,9 +10,17 @@
     sprite: Structures/Windows/reinforced_plasma_window.rsi
   - type: Damageable
     damageContainer: Inorganic
-    damageModifierSet: Glass
+    damageModifierSet: RGlass
+  - type: RadiationBlocker
+    resistance: 4
   - type: Destructible
     thresholds:
+    - trigger:
+        !type:DamageTrigger
+        damage: 1000
+      behaviors: #excess damage, don't spawn entities.
+      - !type:DoActsBehavior
+        acts: [ "Destruction" ]
     - trigger:
         !type:DamageTrigger
         damage: 600
@@ -33,16 +41,17 @@
   - type: IconSmooth
     base: rpwindow
   - type: Construction
-    graph: window
+    graph: Window
     node: reinforcedPlasmaWindow
   - type: Appearance
-    visuals:
-    - type: DamageVisualizer
-      thresholds: [4, 8, 12]
-      damageDivisor: 36
-      trackAllDamage: true
-      damageOverlay:
-        sprite: Structures/Windows/cracks.rsi
+  - type: DamageVisuals
+    thresholds: [4, 8, 12]
+    damageDivisor: 36
+    trackAllDamage: true
+    damageOverlay:
+      sprite: Structures/Windows/cracks.rsi
+  - type: StaticPrice
+    price: 132
 
 - type: entity
   id: PlasmaReinforcedWindowDirectional
@@ -56,17 +65,22 @@
   components:
   - type: Sprite
     netsync: false
-    drawdepth: WallTops
     sprite: Structures/Windows/directional.rsi
     state: plasma_reinforced_window
   - type: Icon
     sprite: Structures/Windows/directional.rsi
     state: plasma_reinforced_window
   - type: Construction
-    graph: windowDirectional
+    graph: WindowDirectional
     node: plasmaReinforcedWindowDirectional
   - type: Destructible
     thresholds:
+    - trigger:
+        !type:DamageTrigger
+        damage: 1000
+      behaviors: #excess damage, don't spawn entities.
+      - !type:DoActsBehavior
+        acts: [ "Destruction" ]
     - trigger:
         !type:DamageTrigger
         damage: 600
@@ -84,3 +98,5 @@
             max: 2
       - !type:DoActsBehavior
         acts: [ "Destruction" ]
+  - type: StaticPrice
+    price: 66

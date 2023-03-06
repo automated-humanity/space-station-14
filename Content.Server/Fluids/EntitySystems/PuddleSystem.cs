@@ -1,121 +1,136 @@
-using System;
-using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using Content.Server.Chemistry.EntitySystems;
-using Content.Server.Construction.Components;
 using Content.Server.Fluids.Components;
-using Content.Shared.Chemistry.Components;
-using Content.Shared.Database;
-using Content.Shared.Directions;
 using Content.Shared.Examine;
 using Content.Shared.FixedPoint;
 using Content.Shared.Fluids;
-using Content.Shared.Maps;
-using Content.Shared.Physics;
-using Content.Shared.Slippery;
-using Content.Shared.Verbs;
+using Content.Shared.StepTrigger.Components;
+using Content.Shared.StepTrigger.Systems;
 using JetBrains.Annotations;
 using Robust.Shared.Audio;
-using Robust.Shared.GameObjects;
-using Robust.Shared.IoC;
-using Robust.Shared.Localization;
 using Robust.Shared.Map;
-using Robust.Shared.Maths;
-using Robust.Shared.Physics;
 using Robust.Shared.Player;
+using Solution = Content.Shared.Chemistry.Components.Solution;
+using Robust.Shared.Prototypes;
 
 namespace Content.Server.Fluids.EntitySystems
 {
     [UsedImplicitly]
     public sealed class PuddleSystem : EntitySystem
     {
-        [Dependency] private readonly IMapManager _mapManager = default!;
         [Dependency] private readonly SolutionContainerSystem _solutionContainerSystem = default!;
+        [Dependency] private readonly FluidSpreaderSystem _fluidSpreaderSystem = default!;
+        [Dependency] private readonly StepTriggerSystem _stepTrigger = default!;
+        [Dependency] private readonly SharedAppearanceSystem _appearance = default!;
+        [Dependency] private readonly IPrototypeManager _protoMan = default!;
+
+        public static float PuddleVolume = 1000;
+
+        // Using local deletion queue instead of the standard queue so that we can easily "undelete" if a puddle
+        // loses & then gains reagents in a single tick.
+        private HashSet<EntityUid> _deletionQueue = new();
 
         public override void Initialize()
         {
             base.Initialize();
 
-            SubscribeLocalEvent<PuddleComponent, UnanchoredEvent>(OnUnanchored);
+            // Shouldn't need re-anchoring.
+            SubscribeLocalEvent<PuddleComponent, AnchorStateChangedEvent>(OnAnchorChanged);
             SubscribeLocalEvent<PuddleComponent, ExaminedEvent>(HandlePuddleExamined);
-            SubscribeLocalEvent<PuddleComponent, SolutionChangedEvent>(OnUpdate);
-            SubscribeLocalEvent<PuddleComponent, ComponentInit>(OnInit);
+            SubscribeLocalEvent<PuddleComponent, SolutionChangedEvent>(OnSolutionUpdate);
+            SubscribeLocalEvent<PuddleComponent, ComponentInit>(OnPuddleInit);
         }
 
-        private void OnInit(EntityUid uid, PuddleComponent component, ComponentInit args)
+        public override void Update(float frameTime)
         {
-            var solution =  _solutionContainerSystem.EnsureSolution(uid, component.SolutionName);
-            solution.MaxVolume = FixedPoint2.New(1000);
+            base.Update(frameTime);
+            foreach (var ent in _deletionQueue)
+            {
+                Del(ent);
+            }
+            _deletionQueue.Clear();
         }
 
-        private void OnUpdate(EntityUid uid, PuddleComponent component, SolutionChangedEvent args)
+        private void OnPuddleInit(EntityUid uid, PuddleComponent component, ComponentInit args)
         {
+            _solutionContainerSystem.EnsureSolution(uid, component.SolutionName, FixedPoint2.New(PuddleVolume), out _);
+        }
+
+        private void OnSolutionUpdate(EntityUid uid, PuddleComponent component, SolutionChangedEvent args)
+        {
+            if (args.Solution.Name != component.SolutionName)
+                return;
+
+            if (args.Solution.Volume <= 0)
+            {
+                _deletionQueue.Add(uid);
+                return;
+            }
+
+            _deletionQueue.Remove(uid);
             UpdateSlip(uid, component);
-            UpdateVisuals(uid, component);
+            UpdateAppearance(uid, component);
         }
 
-        private void UpdateVisuals(EntityUid uid, PuddleComponent puddleComponent)
+        private void UpdateAppearance(EntityUid uid, PuddleComponent? puddleComponent = null, AppearanceComponent? appearance = null)
         {
-            if (Deleted(puddleComponent.Owner) || EmptyHolder(uid, puddleComponent) ||
-                !EntityManager.TryGetComponent<AppearanceComponent>(uid, out var appearanceComponent))
+            if (!Resolve(uid, ref puddleComponent, ref appearance, false)
+                || EmptyHolder(uid, puddleComponent))
             {
                 return;
             }
 
             // Opacity based on level of fullness to overflow
             // Hard-cap lower bound for visibility reasons
-            var volumeScale = puddleComponent.CurrentVolume.Float() / puddleComponent.OverflowVolume.Float();
             var puddleSolution = _solutionContainerSystem.EnsureSolution(uid, puddleComponent.SolutionName);
+            var volumeScale = puddleSolution.Volume.Float() /
+                              puddleComponent.OverflowVolume.Float() *
+                              puddleComponent.OpacityModifier;
 
-            appearanceComponent.SetData(PuddleVisuals.VolumeScale, volumeScale);
-            appearanceComponent.SetData(PuddleVisuals.SolutionColor, puddleSolution.Color);
+            bool isEvaporating;
+
+            if (TryComp(uid, out EvaporationComponent? evaporation)
+                && evaporation.EvaporationToggle)// if puddle is evaporating.
+            {
+                isEvaporating = true;
+            }
+            else isEvaporating = false;
+
+            var color = puddleSolution.GetColor(_protoMan);
+
+            _appearance.SetData(uid, PuddleVisuals.VolumeScale, volumeScale, appearance);
+            _appearance.SetData(uid, PuddleVisuals.CurrentVolume, puddleSolution.Volume, appearance);
+            _appearance.SetData(uid, PuddleVisuals.SolutionColor, color, appearance);
+            _appearance.SetData(uid, PuddleVisuals.IsEvaporatingVisual, isEvaporating, appearance);
         }
 
         private void UpdateSlip(EntityUid entityUid, PuddleComponent puddleComponent)
         {
+            var vol = CurrentVolume(puddleComponent.Owner, puddleComponent);
             if ((puddleComponent.SlipThreshold == FixedPoint2.New(-1) ||
-                 puddleComponent.CurrentVolume < puddleComponent.SlipThreshold) &&
-                EntityManager.TryGetComponent(entityUid, out SlipperyComponent? oldSlippery))
+                 vol < puddleComponent.SlipThreshold) &&
+                TryComp(entityUid, out StepTriggerComponent? stepTrigger))
             {
-                oldSlippery.Slippery = false;
+                _stepTrigger.SetActive(entityUid, false, stepTrigger);
             }
-            else if (puddleComponent.CurrentVolume >= puddleComponent.SlipThreshold)
+            else if (vol >= puddleComponent.SlipThreshold)
             {
-                var newSlippery = EntityManager.EnsureComponent<SlipperyComponent>(entityUid);
-                newSlippery.Slippery = true;
+                var comp = EnsureComp<StepTriggerComponent>(entityUid);
+                _stepTrigger.SetActive(entityUid, true, comp);
             }
         }
 
         private void HandlePuddleExamined(EntityUid uid, PuddleComponent component, ExaminedEvent args)
         {
-            if (EntityManager.TryGetComponent<SlipperyComponent>(uid, out var slippery) && slippery.Slippery)
+            if (TryComp<StepTriggerComponent>(uid, out var slippery) && slippery.Active)
             {
                 args.PushText(Loc.GetString("puddle-component-examine-is-slipper-text"));
             }
         }
 
-        private void OnUnanchored(EntityUid uid, PuddleComponent puddle, UnanchoredEvent unanchoredEvent)
+        private void OnAnchorChanged(EntityUid uid, PuddleComponent puddle, ref AnchorStateChangedEvent args)
         {
-            if (!EntityManager.GetComponent<TransformComponent>(puddle.Owner).Anchored)
-                return;
-
-            EntityManager.QueueDeleteEntity(puddle.Owner);
-        }
-
-        /// <summary>
-        ///     Whether adding this solution to this puddle would overflow.
-        /// </summary>
-        /// <param name="uid">Uid of owning entity</param>
-        /// <param name="puddle">Puddle to which we are adding solution</param>
-        /// <param name="solution">Solution we intend to add</param>
-        /// <returns></returns>
-        public bool WouldOverflow(EntityUid uid, Solution solution, PuddleComponent? puddle = null)
-        {
-            if (!Resolve(uid, ref puddle))
-                return false;
-
-            return puddle.CurrentVolume + solution.TotalVolume > puddle.OverflowVolume;
+            if (!args.Anchored)
+                QueueDel(uid);
         }
 
         public bool EmptyHolder(EntityUid uid, PuddleComponent? puddleComponent = null)
@@ -135,38 +150,41 @@ namespace Content.Server.Fluids.EntitySystems
 
             return _solutionContainerSystem.TryGetSolution(puddleComponent.Owner, puddleComponent.SolutionName,
                 out var solution)
-                ? solution.CurrentVolume
+                ? solution.Volume
                 : FixedPoint2.Zero;
         }
 
-        public bool TryAddSolution(EntityUid uid, Solution solution,
+        /// <summary>
+        /// Try to add solution to <paramref name="puddleUid"/>.
+        /// </summary>
+        /// <param name="puddleUid">Puddle to which we add</param>
+        /// <param name="addedSolution">Solution that is added to puddleComponent</param>
+        /// <param name="sound">Play sound on overflow</param>
+        /// <param name="checkForOverflow">Overflow on encountered values</param>
+        /// <param name="puddleComponent">Optional resolved PuddleComponent</param>
+        /// <returns></returns>
+        public bool TryAddSolution(EntityUid puddleUid,
+            Solution addedSolution,
             bool sound = true,
             bool checkForOverflow = true,
             PuddleComponent? puddleComponent = null)
         {
-            if (!Resolve(uid, ref puddleComponent))
+            if (!Resolve(puddleUid, ref puddleComponent))
                 return false;
 
-            if (solution.TotalVolume == 0 ||
+            if (addedSolution.Volume == 0 ||
                 !_solutionContainerSystem.TryGetSolution(puddleComponent.Owner, puddleComponent.SolutionName,
-                    out var puddleSolution))
+                    out var solution))
             {
                 return false;
             }
 
+            solution.AddSolution(addedSolution, _protoMan);
+            _solutionContainerSystem.UpdateChemicals(puddleUid, solution, true);
 
-            var result = _solutionContainerSystem
-                .TryAddSolution(puddleComponent.Owner, puddleSolution, solution);
-            if (!result)
+            if (checkForOverflow && IsOverflowing(puddleUid, puddleComponent))
             {
-                return false;
-            }
-
-            RaiseLocalEvent(puddleComponent.Owner, new SolutionChangedEvent());
-
-            if (checkForOverflow)
-            {
-                CheckOverflow(puddleComponent);
+                _fluidSpreaderSystem.AddOverflowingPuddle(puddleComponent.Owner, puddleComponent);
             }
 
             if (!sound)
@@ -174,145 +192,91 @@ namespace Content.Server.Fluids.EntitySystems
                 return true;
             }
 
-            SoundSystem.Play(Filter.Pvs(puddleComponent.Owner), puddleComponent.SpillSound.GetSound(),
-                puddleComponent.Owner);
+            SoundSystem.Play(puddleComponent.SpillSound.GetSound(),
+                Filter.Pvs(puddleComponent.Owner), puddleComponent.Owner);
             return true;
         }
 
         /// <summary>
-        /// Will overflow this entity to neighboring entities if required
+        /// Given a large srcPuddle and smaller destination puddles, this method will equalize their <see cref="Solution.CurrentVolume"/>
         /// </summary>
-        private void CheckOverflow(PuddleComponent puddleComponent)
+        /// <param name="srcPuddle">puddle that donates liquids to other puddles</param>
+        /// <param name="destinationPuddles">List of puddles that we want to equalize, their puddle <see cref="Solution.CurrentVolume"/> should be less than sourcePuddleComponent</param>
+        /// <param name="totalVolume">Total volume of src and destination puddle</param>
+        /// <param name="stillOverflowing">optional parameter, that after equalization adds all still overflowing puddles.</param>
+        /// <param name="sourcePuddleComponent">puddleComponent for <paramref name="srcPuddle"/></param>
+        public void EqualizePuddles(EntityUid srcPuddle, List<PuddleComponent> destinationPuddles,
+            FixedPoint2 totalVolume,
+            HashSet<EntityUid>? stillOverflowing = null,
+            PuddleComponent? sourcePuddleComponent = null)
         {
-            if (puddleComponent.CurrentVolume <= puddleComponent.OverflowVolume
-                || puddleComponent.Overflown)
+            if (!Resolve(srcPuddle, ref sourcePuddleComponent)
+                || !_solutionContainerSystem.TryGetSolution(srcPuddle, sourcePuddleComponent.SolutionName,
+                    out var srcSolution))
                 return;
 
-            var nextPuddles = new List<PuddleComponent>() { puddleComponent };
-            var overflownPuddles = new List<PuddleComponent>();
+            var dividedVolume = totalVolume / (destinationPuddles.Count + 1);
 
-            while (puddleComponent.OverflowLeft > FixedPoint2.Zero && nextPuddles.Count > 0)
+            foreach (var destPuddle in destinationPuddles)
             {
-                foreach (var next in nextPuddles.ToArray())
+                if (!_solutionContainerSystem.TryGetSolution(destPuddle.Owner, destPuddle.SolutionName,
+                        out var destSolution))
+                    continue;
+
+                var takeAmount = FixedPoint2.Max(0, dividedVolume - destSolution.Volume);
+                TryAddSolution(destPuddle.Owner, srcSolution.SplitSolution(takeAmount), false, false, destPuddle);
+                if (stillOverflowing != null && IsOverflowing(destPuddle.Owner, destPuddle))
                 {
-                    nextPuddles.Remove(next);
-
-                    next.Overflown = true;
-                    overflownPuddles.Add(next);
-
-                    var adjacentPuddles = GetAllAdjacentOverflow(next).ToArray();
-                    if (puddleComponent.OverflowLeft <= FixedPoint2.Epsilon * adjacentPuddles.Length)
-                    {
-                        break;
-                    }
-
-                    if (adjacentPuddles.Length == 0)
-                    {
-                        continue;
-                    }
-
-                    var numberOfAdjacent = FixedPoint2.New(adjacentPuddles.Length);
-                    var overflowSplit = puddleComponent.OverflowLeft / numberOfAdjacent;
-                    foreach (var adjacent in adjacentPuddles)
-                    {
-                        var adjacentPuddle = adjacent();
-                        var quantity = FixedPoint2.Min(overflowSplit, adjacentPuddle.OverflowVolume);
-                        var puddleSolution = _solutionContainerSystem.EnsureSolution(puddleComponent.Owner,
-                            puddleComponent.SolutionName);
-                        var spillAmount = _solutionContainerSystem.SplitSolution(puddleComponent.Owner,
-                            puddleSolution, quantity);
-
-                        TryAddSolution(adjacentPuddle.Owner, spillAmount, false, false);
-                        nextPuddles.Add(adjacentPuddle);
-                    }
+                    stillOverflowing.Add(destPuddle.Owner);
                 }
             }
 
-            foreach (var puddle in overflownPuddles)
+            if (stillOverflowing != null && srcSolution.Volume > sourcePuddleComponent.OverflowVolume)
             {
-                puddle.Overflown = false;
+                stillOverflowing.Add(srcPuddle);
             }
         }
 
         /// <summary>
-        /// Finds or creates adjacent puddles in random directions from this one
+        ///     Whether adding this solution to this puddle would overflow.
         /// </summary>
-        /// <returns>Enumerable of the puddles found or to be created</returns>
-        private IEnumerable<Func<PuddleComponent>> GetAllAdjacentOverflow(PuddleComponent puddleComponent)
+        /// <param name="uid">Uid of owning entity</param>
+        /// <param name="puddle">Puddle to which we are adding solution</param>
+        /// <param name="solution">Solution we intend to add</param>
+        /// <returns></returns>
+        public bool WouldOverflow(EntityUid uid, Solution solution, PuddleComponent? puddle = null)
         {
-            foreach (var direction in SharedDirectionExtensions.RandomDirections())
-            {
-                if (TryGetAdjacentOverflow(puddleComponent, direction, out var puddle))
-                {
-                    yield return puddle;
-                }
-            }
+            if (!Resolve(uid, ref puddle))
+                return false;
+
+            return CurrentVolume(uid, puddle) + solution.Volume > puddle.OverflowVolume;
         }
 
         /// <summary>
-        /// Tries to get an adjacent coordinate to overflow to, unless it is blocked by a wall on the
-        /// same tile or the tile is empty
+        ///     Whether adding this solution to this puddle would overflow.
         /// </summary>
-        /// <param name="puddleComponent"></param>
-        /// <param name="direction">The direction to get the puddle from, respective to this one</param>
-        /// <param name="puddle">The puddle that was found or is to be created, or null if there
-        /// is a wall in the way</param>
-        /// <returns>true if a puddle was found or created, false otherwise</returns>
-        private bool TryGetAdjacentOverflow(PuddleComponent puddleComponent, Direction direction,
-            [NotNullWhen(true)] out Func<PuddleComponent>? puddle)
+        /// <param name="uid">Uid of owning entity</param>
+        /// <param name="puddle">Puddle ref param</param>
+        /// <returns></returns>
+        private bool IsOverflowing(EntityUid uid, PuddleComponent? puddle = null)
         {
-            puddle = default;
-
-            // We're most likely in space, do nothing.
-            if (!EntityManager.GetComponent<TransformComponent>(puddleComponent.Owner).GridID.IsValid())
+            if (!Resolve(uid, ref puddle))
                 return false;
 
-            var mapGrid = _mapManager.GetGrid(EntityManager.GetComponent<TransformComponent>(puddleComponent.Owner).GridID);
-            var coords = EntityManager.GetComponent<TransformComponent>(puddleComponent.Owner).Coordinates;
+            return CurrentVolume(uid, puddle) > puddle.OverflowVolume;
+        }
 
-            if (!coords.Offset(direction).TryGetTileRef(out var tile))
-            {
-                return false;
-            }
+        public PuddleComponent SpawnPuddle(EntityUid srcUid, EntityCoordinates pos, PuddleComponent? srcPuddleComponent = null)
+        {
+            MetaDataComponent? metadata = null;
+            Resolve(srcUid, ref srcPuddleComponent, ref metadata);
 
-            // If space return early, let that spill go out into the void
-            if (tile.Value.Tile.IsEmpty)
-            {
-                return false;
-            }
+            var prototype = metadata?.EntityPrototype?.ID ?? "PuddleSmear"; // TODO Spawn a entity based on another entity
 
-            if (!EntityManager.GetComponent<TransformComponent>(puddleComponent.Owner).Anchored)
-                return false;
+            var destUid = EntityManager.SpawnEntity(prototype, pos);
+            var destPuddle = EntityManager.EnsureComponent<PuddleComponent>(destUid);
 
-            foreach (var entity in mapGrid.GetInDir(coords, direction))
-            {
-                if (EntityManager.TryGetComponent(entity, out IPhysBody? physics) &&
-                    (physics.CollisionLayer & (int)CollisionGroup.Impassable) != 0)
-                {
-                    puddle = default;
-                    return false;
-                }
-
-                if (EntityManager.TryGetComponent(entity, out PuddleComponent? existingPuddle))
-                {
-                    if (existingPuddle.Overflown)
-                    {
-                        return false;
-                    }
-
-                    puddle = () => existingPuddle;
-                }
-            }
-
-            puddle ??= () =>
-            {
-                var id = EntityManager.SpawnEntity(
-                    EntityManager.GetComponent<MetaDataComponent>(puddleComponent.Owner).EntityPrototype?.ID,
-                    mapGrid.DirectionToGrid(coords, direction));
-                return EntityManager.GetComponent<PuddleComponent>(id);
-            };
-
-            return true;
+            return destPuddle;
         }
     }
 }

@@ -1,17 +1,13 @@
-using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using Content.Shared.CCVar;
 using Robust.Shared.Configuration;
-using Robust.Shared.GameObjects;
-using Robust.Shared.IoC;
-using Robust.Shared.Localization;
 
 namespace Content.Server.Chat.Managers;
 
-public class ChatSanitizationManager : IChatSanitizationManager
+public sealed class ChatSanitizationManager : IChatSanitizationManager
 {
-    [Dependency] private IConfigurationManager _configurationManager = default!;
+    [Dependency] private readonly IConfigurationManager _configurationManager = default!;
 
     private static readonly Dictionary<string, string> SmileyToEmote = new()
     {
@@ -24,6 +20,8 @@ public class ChatSanitizationManager : IChatSanitizationManager
         { "[:", "chatsan-smiles" },
         { "(=", "chatsan-smiles" },
         { "[=", "chatsan-smiles" },
+        { "^^", "chatsan-smiles" },
+        { "^-^", "chatsan-smiles" },
         { ":(", "chatsan-frowns" },
         { ":[", "chatsan-frowns" },
         { "=(", "chatsan-frowns" },
@@ -42,6 +40,7 @@ public class ChatSanitizationManager : IChatSanitizationManager
         { "xD", "chatsan-laughs" },
         { ";-;", "chatsan-cries" },
         { ";_;", "chatsan-cries" },
+        { "qwq", "chatsan-cries" },
         { ":u", "chatsan-smiles-smugly" },
         { ":v", "chatsan-smiles-smugly" },
         { ">:i", "chatsan-annoyed" },
@@ -60,19 +59,28 @@ public class ChatSanitizationManager : IChatSanitizationManager
         { ":/", "chatsan-uncertain" },
         { ":\\", "chatsan-uncertain" },
         { "lmao", "chatsan-laughs" },
+        { "lmao.", "chatsan-laughs" },
         { "lol", "chatsan-laughs" },
+        { "lol.", "chatsan-laughs" },
+        { "lel", "chatsan-laughs" },
+        { "lel.", "chatsan-laughs" },
+        { "kek", "chatsan-laughs" },
+        { "kek.", "chatsan-laughs" },
+        { "o7", "chatsan-salutes" },
+        { ";_;7", "chatsan-tearfully-salutes"},
+        { "idk", "chatsan-shrugs" }
     };
 
-    private bool doSanitize = false;
+    private bool _doSanitize;
 
     public void Initialize()
     {
-        _configurationManager.OnValueChanged(CCVars.ChatSanitizerEnabled, x => doSanitize = x, true);
+        _configurationManager.OnValueChanged(CCVars.ChatSanitizerEnabled, x => _doSanitize = x, true);
     }
 
     public bool TrySanitizeOutSmilies(string input, EntityUid speaker, out string sanitized, [NotNullWhen(true)] out string? emote)
     {
-        if (!doSanitize)
+        if (!_doSanitize)
         {
             sanitized = input;
             emote = null;

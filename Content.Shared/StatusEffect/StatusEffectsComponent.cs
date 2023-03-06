@@ -1,36 +1,31 @@
-﻿using System;
-using System.Collections.Generic;
-using Robust.Shared.Analyzers;
-using Robust.Shared.GameObjects;
 using Robust.Shared.GameStates;
 using Robust.Shared.Serialization;
-using Robust.Shared.Serialization.Manager.Attributes;
-using Robust.Shared.ViewVariables;
 
 namespace Content.Shared.StatusEffect
 {
     [RegisterComponent]
     [NetworkedComponent]
-    [Friend(typeof(StatusEffectsSystem))]
-    public class StatusEffectsComponent : Component
+    [Access(typeof(StatusEffectsSystem))]
+    public sealed class StatusEffectsComponent : Component
     {
-        public override string Name => "StatusEffects";
-
         [ViewVariables]
         public Dictionary<string, StatusEffectState> ActiveEffects = new();
 
         /// <summary>
         ///     A list of status effect IDs to be allowed
         /// </summary>
-        [DataField("allowed", required: true)]
+        [DataField("allowed", required: true), Access(typeof(StatusEffectsSystem), Other = AccessPermissions.ReadExecute)]
         public List<string> AllowedEffects = default!;
     }
+
+    [RegisterComponent]
+    public sealed class ActiveStatusEffectsComponent : Component {}
 
     /// <summary>
     ///     Holds information about an active status effect.
     /// </summary>
     [Serializable, NetSerializable]
-    public class StatusEffectState
+    public sealed class StatusEffectState
     {
         /// <summary>
         ///     The start and end times of the status effect.
@@ -58,10 +53,17 @@ namespace Content.Shared.StatusEffect
             CooldownRefresh = refresh;
             RelevantComponent = relevantComponent;
         }
+
+        public StatusEffectState(StatusEffectState toCopy)
+        {
+            Cooldown = (toCopy.Cooldown.Item1, toCopy.Cooldown.Item2);
+            CooldownRefresh = toCopy.CooldownRefresh;
+            RelevantComponent = toCopy.RelevantComponent;
+        }
     }
 
     [Serializable, NetSerializable]
-    public class StatusEffectsComponentState : ComponentState
+    public sealed class StatusEffectsComponentState : ComponentState
     {
         public Dictionary<string, StatusEffectState> ActiveEffects;
         public List<string> AllowedEffects;

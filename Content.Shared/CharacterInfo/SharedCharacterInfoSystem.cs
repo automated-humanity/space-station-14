@@ -1,13 +1,10 @@
-﻿using System;
-using System.Collections.Generic;
-using Content.Shared.Objectives;
-using Robust.Shared.GameObjects;
+﻿using Content.Shared.Objectives;
 using Robust.Shared.Serialization;
 
 namespace Content.Shared.CharacterInfo;
 
 [Serializable, NetSerializable]
-public class RequestCharacterInfoEvent : EntityEventArgs
+public sealed class RequestCharacterInfoEvent : EntityEventArgs
 {
     public readonly EntityUid EntityUid;
 
@@ -18,16 +15,18 @@ public class RequestCharacterInfoEvent : EntityEventArgs
 }
 
 [Serializable, NetSerializable]
-public class CharacterInfoEvent : EntityEventArgs
+public sealed class CharacterInfoEvent : EntityEventArgs
 {
     public readonly EntityUid EntityUid;
     public readonly string JobTitle;
     public readonly Dictionary<string, List<ConditionInfo>> Objectives;
+    public readonly string Briefing;
 
-    public CharacterInfoEvent(EntityUid entityUid, string jobTitle, Dictionary<string, List<ConditionInfo>> objectives)
+    public CharacterInfoEvent(EntityUid entityUid, string jobTitle, Dictionary<string, List<ConditionInfo>> objectives, string briefing)
     {
         EntityUid = entityUid;
         JobTitle = jobTitle;
         Objectives = objectives;
+        Briefing = briefing;
     }
 }

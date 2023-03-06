@@ -1,14 +1,10 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
-using Robust.Shared.Serialization.Manager.Attributes;
-using Robust.Shared.ViewVariables;
+﻿using System.Diagnostics.CodeAnalysis;
 
 namespace Content.Shared.Construction
 {
     [Serializable]
     [DataDefinition]
-    public class ConstructionGraphNode
+    public sealed class ConstructionGraphNode
     {
         [DataField("actions", serverOnly: true)]
         private IGraphAction[] _actions = Array.Empty<IGraphAction>();
@@ -16,7 +12,6 @@ namespace Content.Shared.Construction
         [DataField("edges")]
         private ConstructionGraphEdge[] _edges = Array.Empty<ConstructionGraphEdge>();
 
-        [ViewVariables]
         [DataField("node", required: true)]
         public string Name { get; private set; } = default!;
 
@@ -26,7 +21,6 @@ namespace Content.Shared.Construction
         [ViewVariables]
         public IReadOnlyList<IGraphAction> Actions => _actions;
 
-        [ViewVariables]
         [DataField("entity")]
         public string? Entity { get; private set; }
 

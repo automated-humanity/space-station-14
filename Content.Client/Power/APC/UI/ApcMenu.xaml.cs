@@ -13,7 +13,7 @@ using Robust.Shared.Maths;
 namespace Content.Client.Power.APC.UI
 {
     [GenerateTypedNameReferences]
-    public partial class ApcMenu : SS14Window
+    public sealed partial class ApcMenu : DefaultWindow
     {
         public ApcMenu(ApcBoundUserInterface owner)
         {
@@ -30,6 +30,11 @@ namespace Content.Client.Power.APC.UI
             if (BreakerButton != null)
             {
                 BreakerButton.Pressed = castState.MainBreaker;
+            }
+
+            if (PowerLabel != null)
+            {
+                PowerLabel.Text = Loc.GetString("apc-menu-power-label", ("power", castState.Power));
             }
 
             if (ExternalPowerStateLabel != null)

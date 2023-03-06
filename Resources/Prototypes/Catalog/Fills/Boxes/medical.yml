@@ -12,10 +12,6 @@
     layers:
       - state: box
       - state: syringe
-  - type: Item
-    size: 30
-  - type: Storage
-    capacity: 30
 
 - type: entity
   name: pill canister box
@@ -31,30 +27,41 @@
     layers:
       - state: box
       - state: pillbox
-  - type: Item
-    size: 30
-  - type: Storage
-    capacity: 30
 
 - type: entity
-  name: sterile box
+  name: bottle box
   parent: BoxCardboard
-  id: BoxSterile
+  id: BoxBottle
+  description: A box full of bottles.
+  components:
+  - type: StorageFill
+    contents:
+      - id: ChemistryEmptyBottle01
+        amount: 6
+  - type: Sprite
+    layers:
+      - state: box
+      - state: bottle
+
+- type: entity
+  name: sterile mask box
+  parent: BoxCardboard
+  id: BoxSterileMask
   description: This box contains sterile medical masks.
   components:
   - type: StorageFill
     contents:
       - id: ClothingMaskSterile
-        amount: 4
+        amount: 6
   - type: Sprite
     layers:
       - state: box
       - state: sterile
 
 - type: entity
-  name: latex box
+  name: latex gloves box
   parent: BoxCardboard
-  id: BoxLatex
+  id: BoxLatexGloves
   description: Contains sterile latex gloves.
   components:
   - type: StorageFill
@@ -65,3 +72,46 @@
     layers:
       - state: box
       - state: latex
+      
+- type: entity
+  name: nitrile gloves box
+  parent: BoxCardboard
+  id: BoxNitrileGloves
+  description: Contains sterile nitrile gloves. Better than latex.
+  components:
+  - type: StorageFill
+    contents:
+      - id: ClothingHandsGlovesNitrile
+        amount: 4
+  - type: Sprite
+    layers:
+      - state: box
+      - state: nitrile
+
+- type: entity
+  name: sterile swab box
+  parent: BoxCardboard
+  id: BoxMouthSwab
+  components:
+  - type: StorageFill
+    contents:
+      - id: DiseaseSwab
+        amount: 30
+
+- type: entity
+  name: body bag box
+  parent: BoxCardboard
+  id: BoxBodyBag
+  description: Contains body bags.
+  components:
+  - type: StorageFill
+    contents:
+      - id: BodyBag_Folded
+        amount: 5
+  - type: Sprite
+    layers:
+      - state: box
+      - state: bodybags
+    whitelist:
+      tags:
+        - BodyBag

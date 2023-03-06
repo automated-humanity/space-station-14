@@ -1,19 +1,19 @@
-﻿using Content.Shared.Chemistry.Components;
+﻿using Content.Server.Botany.Systems;
 using Content.Shared.Chemistry.Reagent;
-using JetBrains.Annotations;
-using Robust.Shared.GameObjects;
 
 namespace Content.Server.Chemistry.ReagentEffects.PlantMetabolism
 {
-    public class PlantAdjustHealth : PlantAdjustAttribute
+    public sealed class PlantAdjustHealth : PlantAdjustAttribute
     {
         public override void Effect(ReagentEffectArgs args)
         {
             if (!CanMetabolize(args.SolutionEntity, out var plantHolderComp, args.EntityManager))
                 return;
 
+            var plantHolder = args.EntityManager.System<PlantHolderSystem>();
+
             plantHolderComp.Health += Amount;
-            plantHolderComp.CheckHealth();
+            plantHolder.CheckHealth(args.SolutionEntity, plantHolderComp);
         }
     }
 }

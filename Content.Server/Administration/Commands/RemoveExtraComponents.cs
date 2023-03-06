@@ -1,13 +1,11 @@
 ﻿using Content.Shared.Administration;
 using Robust.Shared.Console;
-using Robust.Shared.GameObjects;
-using Robust.Shared.IoC;
 using Robust.Shared.Prototypes;
 
 namespace Content.Server.Administration.Commands
 {
     [AdminCommand(AdminFlags.Mapping)]
-    public class RemoveExtraComponents : IConsoleCommand
+    public sealed class RemoveExtraComponents : IConsoleCommand
     {
         public string Command => "removeextracomponents";
         public string Description => "Removes all components from all entities of the specified id if that component is not in its prototype.\nIf no id is specified, it matches all entities.";
@@ -17,6 +15,7 @@ namespace Content.Server.Administration.Commands
             var id = args.Length == 0 ? null : string.Join(" ", args);
             var entityManager = IoCManager.Resolve<IEntityManager>();
             var prototypeManager = IoCManager.Resolve<IPrototypeManager>();
+            var fac = IoCManager.Resolve<IComponentFactory>();
 
             EntityPrototype? prototype = null;
             var checkPrototype = !string.IsNullOrEmpty(id);
@@ -42,7 +41,7 @@ namespace Content.Server.Administration.Commands
 
                 foreach (var component in entityManager.GetComponents(entity))
                 {
-                    if (metaData.EntityPrototype.Components.ContainsKey(component.Name))
+                    if (metaData.EntityPrototype.Components.ContainsKey(fac.GetComponentName(component.GetType())))
                         continue;
 
                     entityManager.RemoveComponent(entity, component);

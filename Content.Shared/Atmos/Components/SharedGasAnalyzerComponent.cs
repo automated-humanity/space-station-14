@@ -1,15 +1,11 @@
-using System;
-using Robust.Shared.GameObjects;
 using Robust.Shared.GameStates;
-using Robust.Shared.Localization;
 using Robust.Shared.Serialization;
 
 namespace Content.Shared.Atmos.Components
 {
     [NetworkedComponent()]
-    public class SharedGasAnalyzerComponent : Component
+    public abstract class SharedGasAnalyzerComponent : Component
     {
-        public override string Name => "GasAnalyzer";
 
         [Serializable, NetSerializable]
         public enum GasAnalyzerUiKey
@@ -17,23 +13,53 @@ namespace Content.Shared.Atmos.Components
             Key,
         }
 
+        /// <summary>
+        /// Atmospheric data is gathered in the system and sent to the user
+        /// </summary>
         [Serializable, NetSerializable]
-        public class GasAnalyzerBoundUserInterfaceState : BoundUserInterfaceState
+        public sealed class GasAnalyzerUserMessage : BoundUserInterfaceMessage
         {
-            public float Pressure;
-            public float Temperature;
-            public GasEntry[]? Gases;
+            public string DeviceName;
+            public EntityUid DeviceUid;
+            public bool DeviceFlipped;
             public string? Error;
-
-            public GasAnalyzerBoundUserInterfaceState(float pressure, float temperature, GasEntry[]? gases, string? error = null)
+            public GasMixEntry[] NodeGasMixes;
+            public GasAnalyzerUserMessage(GasMixEntry[] nodeGasMixes, string deviceName, EntityUid deviceUid, bool deviceFlipped, string? error = null)
             {
-                Pressure = pressure;
-                Temperature = temperature;
-                Gases = gases;
+                NodeGasMixes = nodeGasMixes;
+                DeviceName = deviceName;
+                DeviceUid = deviceUid;
+                DeviceFlipped = deviceFlipped;
                 Error = error;
             }
         }
 
+        /// <summary>
+        /// Contains information on a gas mix entry, turns into a tab in the UI
+        /// </summary>
+        [Serializable, NetSerializable]
+        public struct GasMixEntry
+        {
+            /// <summary>
+            /// Name of the tab in the UI
+            /// </summary>
+            public readonly string Name;
+            public readonly float Pressure;
+            public readonly float Temperature;
+            public readonly GasEntry[]? Gases;
+
+            public GasMixEntry(string name, float pressure, float temperature, GasEntry[]? gases = null)
+            {
+                Name = name;
+                Pressure = pressure;
+                Temperature = temperature;
+                Gases = gases;
+            }
+        }
+
+        /// <summary>
+        /// Individual gas entry data for populating the UI
+        /// </summary>
         [Serializable, NetSerializable]
         public struct GasEntry
         {
@@ -59,43 +85,15 @@ namespace Content.Shared.Atmos.Components
         }
 
         [Serializable, NetSerializable]
-        public class GasAnalyzerRefreshMessage : BoundUserInterfaceMessage
+        public sealed class GasAnalyzerDisableMessage : BoundUserInterfaceMessage
         {
-            public GasAnalyzerRefreshMessage() {}
-        }
-
-        [Serializable, NetSerializable]
-        public enum GasAnalyzerDanger
-        {
-            Nominal,
-            Warning,
-            Hazard
-        }
-
-        [Serializable, NetSerializable]
-        public class GasAnalyzerComponentState : ComponentState
-        {
-            public GasAnalyzerDanger Danger;
-
-            public GasAnalyzerComponentState(GasAnalyzerDanger danger)
-            {
-                Danger = danger;
-            }
+            public GasAnalyzerDisableMessage() {}
         }
     }
 
-    [NetSerializable]
-    [Serializable]
-    public enum GasAnalyzerVisuals
+    [Serializable, NetSerializable]
+    public enum GasAnalyzerVisuals : byte
     {
-        VisualState,
-    }
-
-    [NetSerializable]
-    [Serializable]
-    public enum GasAnalyzerVisualState
-    {
-        Off,
-        Working,
+        Enabled,
     }
 }

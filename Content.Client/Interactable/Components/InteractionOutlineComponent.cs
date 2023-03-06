@@ -7,7 +7,7 @@ using Robust.Shared.Prototypes;
 namespace Content.Client.Interactable.Components
 {
     [RegisterComponent]
-    public class InteractionOutlineComponent : Component
+    public sealed class InteractionOutlineComponent : Component
     {
         [Dependency] private readonly IPrototypeManager _prototypeManager = default!;
         [Dependency] private readonly IEntityManager _entMan = default!;
@@ -15,9 +15,6 @@ namespace Content.Client.Interactable.Components
         private const float DefaultWidth = 1;
         private const string ShaderInRange = "SelectionOutlineInrange";
         private const string ShaderOutOfRange = "SelectionOutline";
-
-        public override string Name => "InteractionOutline";
-
         private bool _inRange;
         private ShaderInstance? _shader;
         private int _lastRenderScale;
@@ -26,18 +23,20 @@ namespace Content.Client.Interactable.Components
         {
             _lastRenderScale = renderScale;
             _inRange = inInteractionRange;
-            if (_entMan.TryGetComponent(Owner, out ISpriteComponent? sprite))
+            if (_entMan.TryGetComponent(Owner, out SpriteComponent? sprite) && sprite.PostShader == null)
             {
-                sprite.PostShader = MakeNewShader(inInteractionRange, renderScale);
-                sprite.RenderOrder = _entMan.CurrentTick.Value;
+                // TODO why is this creating a new instance of the outline shader every time the mouse enters???
+                _shader = MakeNewShader(inInteractionRange, renderScale);
+                sprite.PostShader = _shader;
             }
         }
 
         public void OnMouseLeave()
         {
-            if (_entMan.TryGetComponent(Owner, out ISpriteComponent? sprite))
+            if (_entMan.TryGetComponent(Owner, out SpriteComponent? sprite))
             {
-                sprite.PostShader = null;
+                if (sprite.PostShader == _shader)
+                    sprite.PostShader = null;
                 sprite.RenderOrder = 0;
             }
 
@@ -47,11 +46,13 @@ namespace Content.Client.Interactable.Components
 
         public void UpdateInRange(bool inInteractionRange, int renderScale)
         {
-            if (_entMan.TryGetComponent(Owner, out ISpriteComponent? sprite)
+            if (_entMan.TryGetComponent(Owner, out SpriteComponent? sprite)
+                && sprite.PostShader == _shader
                 && (inInteractionRange != _inRange || _lastRenderScale != renderScale))
             {
                 _inRange = inInteractionRange;
                 _lastRenderScale = renderScale;
+
                 _shader = MakeNewShader(_inRange, _lastRenderScale);
                 sprite.PostShader = _shader;
             }

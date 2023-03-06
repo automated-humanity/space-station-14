@@ -1,10 +1,9 @@
-﻿using System.Collections.Generic;
-using Robust.Shared.IoC;
+﻿using System.Linq;
 using Robust.Shared.Prototypes;
 
 namespace Content.Shared.Kitchen
 {
-    public class RecipeManager
+    public sealed class RecipeManager
     {
         [Dependency] private readonly IPrototypeManager _prototypeManager = default!;
 
@@ -23,22 +22,12 @@ namespace Content.Shared.Kitchen
         /// <summary>
         /// Check if a prototype ids appears in any of the recipes that exist.
         /// </summary>
-        /// <param name="solidIds"></param>
-        /// <returns></returns>
         public bool SolidAppears(string solidId)
         {
-            foreach(var recipe in Recipes)
-            {
-                if(recipe.IngredientsSolids.ContainsKey(solidId))
-                {
-                    return true;
-                }
-            }
-
-            return false;
+            return Recipes.Any(recipe => recipe.IngredientsSolids.ContainsKey(solidId));
         }
 
-        private class RecipeComparer : Comparer<FoodRecipePrototype>
+        private sealed class RecipeComparer : Comparer<FoodRecipePrototype>
         {
             public override int Compare(FoodRecipePrototype? x, FoodRecipePrototype? y)
             {
@@ -47,7 +36,9 @@ namespace Content.Shared.Kitchen
                     return 0;
                 }
 
-                return -x.IngredientsReagents.Count.CompareTo(y.IngredientsReagents.Count);
+                var nx = x.IngredientCount();
+                var ny = y.IngredientCount();
+                return -nx.CompareTo(ny);
             }
         }
     }

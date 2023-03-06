@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using Content.Server.Body.Components;
 using Content.Server.Body.Systems;
 using Content.Server.Chemistry.EntitySystems;
@@ -6,42 +5,47 @@ using Content.Server.DoAfter;
 using Content.Server.Hands.Components;
 using Content.Server.Nutrition.Components;
 using Content.Server.Popups;
-using Content.Shared.ActionBlocker;
 using Content.Shared.Administration.Logs;
 using Content.Shared.Body.Components;
+using Content.Shared.Chemistry;
+using Content.Shared.Chemistry.Components;
 using Content.Shared.Chemistry.Reagent;
 using Content.Shared.Database;
+using Content.Shared.DoAfter;
 using Content.Shared.FixedPoint;
+using Content.Shared.Hands.EntitySystems;
+using Content.Shared.IdentityManagement;
 using Content.Shared.Interaction;
-using Content.Shared.Interaction.Helpers;
-using Content.Shared.MobState.Components;
+using Content.Shared.Interaction.Events;
+using Content.Shared.Inventory;
+using Content.Shared.Mobs.Components;
+using Content.Shared.Mobs.Systems;
 using Content.Shared.Verbs;
 using Robust.Shared.Audio;
-using Robust.Shared.GameObjects;
-using Robust.Shared.IoC;
-using Robust.Shared.Localization;
 using Robust.Shared.Player;
 using Robust.Shared.Utility;
-using Content.Shared.Hands;
-using Content.Shared.Inventory;
-using Content.Shared.Item;
 
 namespace Content.Server.Nutrition.EntitySystems
 {
     /// <summary>
     /// Handles feeding attempts both on yourself and on the target.
     /// </summary>
-    internal class FoodSystem : EntitySystem
+    public sealed class FoodSystem : EntitySystem
     {
         [Dependency] private readonly SolutionContainerSystem _solutionContainerSystem = default!;
+        [Dependency] private readonly FlavorProfileSystem _flavorProfileSystem = default!;
         [Dependency] private readonly BodySystem _bodySystem = default!;
         [Dependency] private readonly StomachSystem _stomachSystem = default!;
         [Dependency] private readonly PopupSystem _popupSystem = default!;
+        [Dependency] private readonly MobStateSystem _mobStateSystem = default!;
         [Dependency] private readonly UtensilSystem _utensilSystem = default!;
         [Dependency] private readonly DoAfterSystem _doAfterSystem = default!;
-        [Dependency] private readonly SharedAdminLogSystem _logSystem = default!;
-        [Dependency] private readonly ActionBlockerSystem _actionBlockerSystem = default!;
+        [Dependency] private readonly ISharedAdminLogManager _adminLogger = default!;
         [Dependency] private readonly InventorySystem _inventorySystem = default!;
+        [Dependency] private readonly SharedInteractionSystem _interactionSystem = default!;
+        [Dependency] private readonly SharedHandsSystem _handsSystem = default!;
+        [Dependency] private readonly ReactiveSystem _reaction = default!;
+        [Dependency] private readonly SharedAudioSystem _audio = default!;
 
         public override void Initialize()
         {
@@ -49,24 +53,9 @@ namespace Content.Server.Nutrition.EntitySystems
 
             SubscribeLocalEvent<FoodComponent, UseInHandEvent>(OnUseFoodInHand);
             SubscribeLocalEvent<FoodComponent, AfterInteractEvent>(OnFeedFood);
-            SubscribeLocalEvent<FoodComponent, HandDeselectedEvent>(OnFoodDeselected);
-            SubscribeLocalEvent<FoodComponent, GetInteractionVerbsEvent>(AddEatVerb);
-            SubscribeLocalEvent<SharedBodyComponent, ForceFeedEvent>(OnForceFeed);
-            SubscribeLocalEvent<ForceFeedCancelledEvent>(OnForceFeedCancelled);
+            SubscribeLocalEvent<FoodComponent, GetVerbsEvent<AlternativeVerb>>(AddEatVerb);
+            SubscribeLocalEvent<FoodComponent, DoAfterEvent<FoodData>>(OnDoAfter);
             SubscribeLocalEvent<InventoryComponent, IngestionAttemptEvent>(OnInventoryIngestAttempt);
-        }
-
-        /// <summary>
-        ///     If the user is currently force feeding someone, this cancels the attempt if they swap hands or otherwise
-        ///     loose the item. Prevents force-feeding dual-wielding.
-        /// </summary>
-        private void OnFoodDeselected(EntityUid uid, FoodComponent component, HandDeselectedEvent args)
-        {
-            if (component.CancelToken != null)
-            {
-                component.CancelToken.Cancel();
-                component.CancelToken = null;
-            }
         }
 
         /// <summary>
@@ -77,16 +66,7 @@ namespace Content.Server.Nutrition.EntitySystems
             if (ev.Handled)
                 return;
 
-            if (!_actionBlockerSystem.CanInteract(ev.User) || !_actionBlockerSystem.CanUse(ev.User))
-                return;
-
-            if (!ev.User.InRangeUnobstructed(uid, popup: true))
-            {
-                ev.Handled = true;
-                return;
-            }
-
-            ev.Handled = TryUseFood(uid, ev.User);
+            ev.Handled = TryFeed(ev.User, ev.User, uid, foodComponent);
         }
 
         /// <summary>
@@ -94,167 +74,206 @@ namespace Content.Server.Nutrition.EntitySystems
         /// </summary>
         private void OnFeedFood(EntityUid uid, FoodComponent foodComponent, AfterInteractEvent args)
         {
-            if (args.Handled || args.Target == null)
+            if (args.Handled || args.Target == null || !args.CanReach)
                 return;
 
-            if (!_actionBlockerSystem.CanInteract(args.User) || !_actionBlockerSystem.CanUse(args.User))
-                return;
-
-            if (!args.User.InRangeUnobstructed(uid, popup: true))
-            {
-                args.Handled = true;
-                return;
-            }
-
-            if (args.User == args.Target)
-            {
-                args.Handled = TryUseFood(uid, args.User);
-                return;
-            }
-
-            if (!args.User.InRangeUnobstructed(args.Target.Value, popup: true))
-            {
-                args.Handled = true;
-                return;
-            }
-
-            args.Handled = TryForceFeed(uid, args.User, args.Target.Value);
+            args.Handled = TryFeed(args.User, args.Target.Value, uid, foodComponent);
         }
 
-        /// <summary>
-        /// Tries to eat some food
-        /// </summary>
-        /// <param name="uid">Food entity.</param>
-        /// <param name="user">Feeding initiator.</param>
-        /// <returns>True if an interaction occurred (i.e., food was consumed, or a pop-up message was created)</returns>
-        public bool TryUseFood(EntityUid uid, EntityUid user, FoodComponent? food = null)
+        public bool TryFeed(EntityUid user, EntityUid target, EntityUid food, FoodComponent foodComp)
         {
-            if (!Resolve(uid, ref food))
+            //Suppresses self-eating
+            if (food == user || EntityManager.TryGetComponent<MobStateComponent>(food, out var mobState) && _mobStateSystem.IsAlive(food, mobState)) // Suppresses eating alive mobs
                 return false;
 
-            // if currently being used to force-feed, cancel that action.
-            if (food.CancelToken != null)
-            {
-                food.CancelToken.Cancel();
-                food.CancelToken = null;
-                return true;
-            }
-
-            if (uid == user || //Suppresses self-eating
-                EntityManager.TryGetComponent<MobStateComponent>(uid, out var mobState) && mobState.IsAlive()) // Suppresses eating alive mobs
+            // Target can't be fed or they're already eating
+            if (!EntityManager.HasComponent<BodyComponent>(target) || foodComp.Eating)
                 return false;
 
-            if (!_solutionContainerSystem.TryGetSolution(uid, food.SolutionName, out var solution))
+            if (!_solutionContainerSystem.TryGetSolution(food, foodComp.SolutionName, out var foodSolution))
                 return false;
 
-            if (food.UsesRemaining <= 0)
+            var flavors = _flavorProfileSystem.GetLocalizedFlavorsMessage(food, user, foodSolution);
+
+            if (foodComp.UsesRemaining <= 0)
             {
-                _popupSystem.PopupEntity(Loc.GetString("food-system-try-use-food-is-empty", ("entity", uid)), user, Filter.Entities(user));
-                DeleteAndSpawnTrash(food, user);
-                return true;
+                _popupSystem.PopupEntity(Loc.GetString("food-system-try-use-food-is-empty", ("entity", food)), user, user);
+                DeleteAndSpawnTrash(foodComp, food, user);
+                return false;
             }
 
-            if (!EntityManager.TryGetComponent(user, out SharedBodyComponent ? body) ||
-                !_bodySystem.TryGetComponentsOnMechanisms<StomachComponent>(user, out var stomachs, body))
+            if (IsMouthBlocked(target, user))
                 return false;
 
-            if (IsMouthBlocked(user, user))
+            if (!TryGetRequiredUtensils(user, foodComp, out var utensils))
+                return false;
+
+            if (!_interactionSystem.InRangeUnobstructed(user, food, popup: true))
+                return true;
+
+            foodComp.Eating = true;
+            foodComp.ForceFeed = user != target;
+
+            if (foodComp.ForceFeed)
             {
-                return true;
+                var userName = Identity.Entity(user, EntityManager);
+                _popupSystem.PopupEntity(Loc.GetString("food-system-force-feed", ("user", userName)),
+                    user, target);
+
+                // logging
+                _adminLogger.Add(LogType.ForceFeed, LogImpact.Medium, $"{ToPrettyString(user):user} is forcing {ToPrettyString(target):target} to eat {ToPrettyString(food):food} {SolutionContainerSystem.ToPrettyString(foodSolution)}");
             }
-
-            var usedUtensils = new List<UtensilComponent>();
-
-            if (!TryGetRequiredUtensils(user, food, out var utensils))
-                return true;
-
-            if (!user.InRangeUnobstructed(uid, popup: true))
-                return true;
-
-            var transferAmount = food.TransferAmount != null ? FixedPoint2.Min((FixedPoint2) food.TransferAmount, solution.CurrentVolume) : solution.CurrentVolume;
-            var split = _solutionContainerSystem.SplitSolution(uid, solution, transferAmount);
-            var firstStomach = stomachs.FirstOrNull(
-                stomach => _stomachSystem.CanTransferSolution((stomach.Comp).Owner, split));
-
-            if (firstStomach == null)
-            {
-                _solutionContainerSystem.TryAddSolution(uid, solution, split);
-                _popupSystem.PopupEntity(Loc.GetString("food-system-you-cannot-eat-any-more"), user, Filter.Entities(user));
-                return true;
-            }
-
-            // TODO: Account for partial transfer.
-            split.DoEntityReaction(user, ReactionMethod.Ingestion);
-            _stomachSystem.TryTransferSolution((firstStomach.Value.Comp).Owner, split, firstStomach.Value.Comp);
-
-            SoundSystem.Play(Filter.Pvs(user), food.UseSound.GetSound(), user, AudioParams.Default.WithVolume(-1f));
-            _popupSystem.PopupEntity(Loc.GetString(food.EatMessage, ("food", food.Owner)), user, Filter.Entities(user));
-
-            // Try to break all used utensils
-            foreach (var utensil in usedUtensils)
-            {
-                _utensilSystem.TryBreak((utensil).Owner, user);
-            }
-
-            if (food.UsesRemaining > 0)
-            {
-                return true;
-            }
-
-            if (string.IsNullOrEmpty(food.TrashPrototype))
-                EntityManager.QueueDeleteEntity((food).Owner);
             else
-                DeleteAndSpawnTrash(food, user);
+            {
+                // log voluntary eating
+                _adminLogger.Add(LogType.Ingestion, LogImpact.Low, $"{ToPrettyString(target):target} is eating {ToPrettyString(food):food} {SolutionContainerSystem.ToPrettyString(foodSolution)}");
+            }
+
+            var foodData = new FoodData(foodSolution, flavors, utensils);
+
+            var doAfterEventArgs = new DoAfterEventArgs(user, foodComp.ForceFeed ? foodComp.ForceFeedDelay : foodComp.Delay, target: target, used: food)
+            {
+                RaiseOnTarget = foodComp.ForceFeed,
+                RaiseOnUser = !foodComp.ForceFeed,
+                BreakOnUserMove = foodComp.ForceFeed,
+                BreakOnDamage = true,
+                BreakOnStun = true,
+                BreakOnTargetMove = foodComp.ForceFeed,
+                MovementThreshold = 0.01f,
+                DistanceThreshold = 1.0f,
+                NeedHand = true
+            };
+
+            _doAfterSystem.DoAfter(doAfterEventArgs, foodData);
 
             return true;
+
         }
 
-        private void DeleteAndSpawnTrash(FoodComponent component, EntityUid? user = null)
+        private void OnDoAfter(EntityUid uid, FoodComponent component, DoAfterEvent<FoodData> args)
+        {
+            //Prevents the target from being force fed food but allows the user to chow down
+            if (args.Cancelled)
+            {
+                component.Eating = false;
+                component.ForceFeed = false;
+                return;
+            }
+
+            if (args.Cancelled || args.Handled || component.Deleted || args.Args.Target == null)
+                return;
+
+            if (!TryComp<BodyComponent>(args.Args.Target.Value, out var body))
+                return;
+
+            if (!_bodySystem.TryGetBodyOrganComponents<StomachComponent>(args.Args.Target.Value, out var stomachs, body))
+                return;
+
+            component.Eating = false;
+
+            var transferAmount = component.TransferAmount != null ? FixedPoint2.Min((FixedPoint2) component.TransferAmount, args.AdditionalData.FoodSolution.Volume) : args.AdditionalData.FoodSolution.Volume;
+
+            var split = _solutionContainerSystem.SplitSolution(uid, args.AdditionalData.FoodSolution, transferAmount);
+            //TODO: Get the stomach UID somehow without nabbing owner
+            var firstStomach = stomachs.FirstOrNull(stomach => _stomachSystem.CanTransferSolution(stomach.Comp.Owner, split));
+
+            // No stomach so just popup a message that they can't eat.
+            if (firstStomach == null)
+            {
+                _solutionContainerSystem.TryAddSolution(uid, args.AdditionalData.FoodSolution, split);
+                _popupSystem.PopupEntity(component.ForceFeed ? Loc.GetString("food-system-you-cannot-eat-any-more-other") : Loc.GetString("food-system-you-cannot-eat-any-more"), args.Args.Target.Value, args.Args.User);
+                args.Handled = true;
+                return;
+            }
+
+            _reaction.DoEntityReaction(args.Args.Target.Value, args.AdditionalData.FoodSolution, ReactionMethod.Ingestion);
+            _stomachSystem.TryTransferSolution(firstStomach.Value.Comp.Owner, split, firstStomach.Value.Comp);
+
+            var flavors = args.AdditionalData.FlavorMessage;
+
+            if (component.ForceFeed)
+            {
+                var targetName = Identity.Entity(args.Args.Target.Value, EntityManager);
+                var userName = Identity.Entity(args.Args.User, EntityManager);
+                _popupSystem.PopupEntity(Loc.GetString("food-system-force-feed-success", ("user", userName), ("flavors", flavors)),
+                    uid, uid);
+
+                _popupSystem.PopupEntity(Loc.GetString("food-system-force-feed-success-user", ("target", targetName)), args.Args.User, args.Args.User);
+
+                // log successful force feed
+                _adminLogger.Add(LogType.ForceFeed, LogImpact.Medium, $"{ToPrettyString(uid):user} forced {ToPrettyString(args.Args.User):target} to eat {ToPrettyString(uid):food}");
+            }
+            else
+            {
+                _popupSystem.PopupEntity(Loc.GetString(component.EatMessage, ("food", uid), ("flavors", flavors)), args.Args.User, args.Args.User);
+
+                // log successful voluntary eating
+                _adminLogger.Add(LogType.Ingestion, LogImpact.Low, $"{ToPrettyString(args.Args.User):target} ate {ToPrettyString(uid):food}");
+            }
+
+            _audio.Play(component.UseSound, Filter.Pvs(args.Args.Target.Value), args.Args.Target.Value, true, AudioParams.Default.WithVolume(-1f));
+
+            // Try to break all used utensils
+            //TODO: Replace utensil owner with actual UID
+            foreach (var utensil in args.AdditionalData.Utensils)
+            {
+                _utensilSystem.TryBreak(utensil.Owner, args.Args.User);
+            }
+
+            if (component.UsesRemaining > 0)
+            {
+                args.Handled = true;
+                return;
+            }
+
+
+            if (string.IsNullOrEmpty(component.TrashPrototype))
+                EntityManager.QueueDeleteEntity(uid);
+
+            else
+                DeleteAndSpawnTrash(component, uid, args.Args.User);
+
+            args.Handled = true;
+        }
+
+        private void DeleteAndSpawnTrash(FoodComponent component, EntityUid food, EntityUid? user = null)
         {
             //We're empty. Become trash.
-            var position = EntityManager.GetComponent<TransformComponent>(component.Owner).Coordinates;
+            var position = Transform(food).MapPosition;
             var finisher = EntityManager.SpawnEntity(component.TrashPrototype, position);
 
             // If the user is holding the item
-            if (user != null &&
-                EntityManager.TryGetComponent(user.Value, out HandsComponent? handsComponent) &&
-                handsComponent.IsHolding(component.Owner))
+            if (user != null && _handsSystem.IsHolding(user.Value, food, out var hand))
             {
-                EntityManager.DeleteEntity((component).Owner);
+                EntityManager.DeleteEntity(food);
 
                 // Put the trash in the user's hand
-                if (EntityManager.TryGetComponent(finisher, out SharedItemComponent? item) &&
-                    handsComponent.CanPutInHand(item))
-                {
-                    handsComponent.PutInHand(item);
-                }
+                _handsSystem.TryPickup(user.Value, finisher, hand);
                 return;
             }
 
-            EntityManager.QueueDeleteEntity((component).Owner);
+            EntityManager.QueueDeleteEntity(food);
         }
 
-        private void AddEatVerb(EntityUid uid, FoodComponent component, GetInteractionVerbsEvent ev)
+        private void AddEatVerb(EntityUid uid, FoodComponent component, GetVerbsEvent<AlternativeVerb> ev)
         {
-            if (component.CancelToken != null)
-                return;
-
             if (uid == ev.User ||
                 !ev.CanInteract ||
                 !ev.CanAccess ||
-                !EntityManager.TryGetComponent(ev.User, out SharedBodyComponent? body) ||
-                !_bodySystem.TryGetComponentsOnMechanisms<StomachComponent>(ev.User, out var stomachs, body))
+                !EntityManager.TryGetComponent(ev.User, out BodyComponent? body) ||
+                !_bodySystem.TryGetBodyOrganComponents<StomachComponent>(ev.User, out var stomachs, body))
                 return;
 
-            if (EntityManager.TryGetComponent<MobStateComponent>(uid, out var mobState) && mobState.IsAlive())
+            if (EntityManager.TryGetComponent<MobStateComponent>(uid, out var mobState) && _mobStateSystem.IsAlive(uid, mobState))
                 return;
 
-            Verb verb = new()
+            AlternativeVerb verb = new()
             {
                 Act = () =>
                 {
-                    TryUseFood(uid, ev.User, component);
+                    TryFeed(ev.User, ev.User, uid, component);
                 },
+                Icon = new SpriteSpecifier.Texture(new ResourcePath("/Textures/Interface/VerbIcons/cutlery.svg.192dpi.png")),
                 Text = Loc.GetString("food-system-verb-eat"),
                 Priority = -1
             };
@@ -262,132 +281,13 @@ namespace Content.Server.Nutrition.EntitySystems
             ev.Verbs.Add(verb);
         }
 
-
-        /// <summary>
-        ///     Attempts to force feed a target. Returns true if any interaction occurred, including pop-up generation
-        /// </summary>
-        public bool TryForceFeed(EntityUid uid, EntityUid user, EntityUid target, FoodComponent? food = null)
-        {
-            if (!Resolve(uid, ref food))
-                return false;
-
-            // if currently being used to force-feed, cancel that action.
-            if (food.CancelToken != null)
-            {
-                food.CancelToken.Cancel();
-                food.CancelToken = null;
-                return true;
-            }
-
-            if (!EntityManager.HasComponent<SharedBodyComponent>(target))
-                return false;
-
-            if (!_solutionContainerSystem.TryGetSolution(uid, food.SolutionName, out var foodSolution))
-                return false;
-
-            if (food.UsesRemaining <= 0)
-            {
-                _popupSystem.PopupEntity(Loc.GetString("food-system-try-use-food-is-empty",
-                    ("entity", uid)), user, Filter.Entities(user));
-                DeleteAndSpawnTrash(food, user);
-                return true;
-            }
-
-            if (IsMouthBlocked(target, user))
-            {
-                return true;
-            }
-
-            if (!TryGetRequiredUtensils(user, food, out var utensils))
-                return true;
-
-            EntityManager.TryGetComponent(user, out MetaDataComponent? meta);
-            var userName = meta?.EntityName ?? string.Empty;
-
-            _popupSystem.PopupEntity(Loc.GetString("food-system-force-feed", ("user", userName)),
-                user, Filter.Entities(target));
-
-            food.CancelToken = new();
-            _doAfterSystem.DoAfter(new DoAfterEventArgs(user, food.ForceFeedDelay, food.CancelToken.Token, target)
-            {
-                BreakOnUserMove = true,
-                BreakOnDamage = true,
-                BreakOnStun = true,
-                BreakOnTargetMove = true,
-                MovementThreshold = 1.0f,
-                TargetFinishedEvent = new ForceFeedEvent(user, food, foodSolution, utensils),
-                BroadcastCancelledEvent = new ForceFeedCancelledEvent(food)
-            });
-
-            // logging
-            _logSystem.Add(LogType.ForceFeed, LogImpact.Medium, $"{ToPrettyString(user):user} is forcing {ToPrettyString(target):target} to eat {ToPrettyString(uid):food} {SolutionContainerSystem.ToPrettyString(foodSolution):solution}");
-
-            return true;
-        }
-
-        private void OnForceFeed(EntityUid uid, SharedBodyComponent body, ForceFeedEvent args)
-        {
-            if (args.Food.Deleted)
-                return;
-
-            args.Food.CancelToken = null;
-
-            if (!_bodySystem.TryGetComponentsOnMechanisms<StomachComponent>(uid, out var stomachs, body))
-                return;
-
-            var transferAmount = args.Food.TransferAmount != null
-                ? FixedPoint2.Min((FixedPoint2) args.Food.TransferAmount, args.FoodSolution.CurrentVolume)
-                : args.FoodSolution.CurrentVolume;
-
-            var split = _solutionContainerSystem.SplitSolution((args.Food).Owner, args.FoodSolution, transferAmount);
-            var firstStomach = stomachs.FirstOrNull(
-                stomach => _stomachSystem.CanTransferSolution((stomach.Comp).Owner, split));
-
-            if (firstStomach == null)
-            {
-                _solutionContainerSystem.TryAddSolution(uid, args.FoodSolution, split);
-                _popupSystem.PopupEntity(Loc.GetString("food-system-you-cannot-eat-any-more-other"), uid, Filter.Entities(args.User));
-                return;
-            }
-
-            split.DoEntityReaction(uid, ReactionMethod.Ingestion);
-            _stomachSystem.TryTransferSolution((firstStomach.Value.Comp).Owner, split, firstStomach.Value.Comp);
-
-            EntityManager.TryGetComponent(uid, out MetaDataComponent? targetMeta);
-            var targetName = targetMeta?.EntityName ?? string.Empty;
-
-            EntityManager.TryGetComponent(args.User, out MetaDataComponent? userMeta);
-            var userName = userMeta?.EntityName ?? string.Empty;
-
-            _popupSystem.PopupEntity(Loc.GetString("food-system-force-feed-success", ("user", userName)),
-                uid, Filter.Entities(uid));
-
-            _popupSystem.PopupEntity(Loc.GetString("food-system-force-feed-success-user", ("target", targetName)),
-                args.User, Filter.Entities(args.User));
-
-            SoundSystem.Play(Filter.Pvs(uid), args.Food.UseSound.GetSound(), uid, AudioParams.Default.WithVolume(-1f));
-
-            // Try to break all used utensils
-            foreach (var utensil in args.Utensils)
-            {
-                _utensilSystem.TryBreak((utensil).Owner, args.User);
-            }
-
-            if (args.Food.UsesRemaining > 0)
-                return;
-
-            if (string.IsNullOrEmpty(args.Food.TrashPrototype))
-                EntityManager.QueueDeleteEntity((args.Food).Owner);
-            else
-                DeleteAndSpawnTrash(args.Food, args.User);
-        }
-
         /// <summary>
         ///     Force feeds someone remotely. Does not require utensils (well, not the normal type anyways).
         /// </summary>
         public void ProjectileForceFeed(EntityUid uid, EntityUid target, EntityUid? user, FoodComponent? food = null, BodyComponent? body = null)
         {
-            if (!Resolve(uid, ref food) || !Resolve(target, ref body, false))
+            // TODO: Combine with regular feeding because holy code duplication batman.
+            if (!Resolve(uid, ref food, false) || !Resolve(target, ref body, false))
                 return;
 
             if (IsMouthBlocked(target))
@@ -396,11 +296,11 @@ namespace Content.Server.Nutrition.EntitySystems
             if (!_solutionContainerSystem.TryGetSolution(uid, food.SolutionName, out var foodSolution))
                 return;
 
-            if (!_bodySystem.TryGetComponentsOnMechanisms<StomachComponent>(target, out var stomachs, body))
+            if (!_bodySystem.TryGetBodyOrganComponents<StomachComponent>(target, out var stomachs, body))
                 return;
 
             if (food.UsesRemaining <= 0)
-                DeleteAndSpawnTrash(food);
+                DeleteAndSpawnTrash(food, uid);
 
             var firstStomach = stomachs.FirstOrNull(
                 stomach => _stomachSystem.CanTransferSolution(((IComponent) stomach.Comp).Owner, foodSolution));
@@ -410,27 +310,27 @@ namespace Content.Server.Nutrition.EntitySystems
 
             // logging
             if (user == null)
-                _logSystem.Add(LogType.ForceFeed, $"{ToPrettyString(uid):food} {SolutionContainerSystem.ToPrettyString(foodSolution):solution} was thrown into the mouth of {ToPrettyString(target):target}");
+                _adminLogger.Add(LogType.ForceFeed, $"{ToPrettyString(uid):food} {SolutionContainerSystem.ToPrettyString(foodSolution):solution} was thrown into the mouth of {ToPrettyString(target):target}");
             else
-                _logSystem.Add(LogType.ForceFeed, $"{ToPrettyString(user.Value):user} threw {ToPrettyString(uid):food} {SolutionContainerSystem.ToPrettyString(foodSolution):solution} into the mouth of {ToPrettyString(target):target}");
+                _adminLogger.Add(LogType.ForceFeed, $"{ToPrettyString(user.Value):user} threw {ToPrettyString(uid):food} {SolutionContainerSystem.ToPrettyString(foodSolution):solution} into the mouth of {ToPrettyString(target):target}");
 
             var filter = user == null ? Filter.Entities(target) : Filter.Entities(target, user.Value);
-            _popupSystem.PopupEntity(Loc.GetString(food.EatMessage), target, filter);
+            _popupSystem.PopupEntity(Loc.GetString(food.EatMessage, ("food", food.Owner)), target, filter, true);
 
             foodSolution.DoEntityReaction(uid, ReactionMethod.Ingestion);
             _stomachSystem.TryTransferSolution(((IComponent) firstStomach.Value.Comp).Owner, foodSolution, firstStomach.Value.Comp);
-            SoundSystem.Play(Filter.Pvs(target), food.UseSound.GetSound(), target, AudioParams.Default.WithVolume(-1f));
+            SoundSystem.Play(food.UseSound.GetSound(), Filter.Pvs(target), target, AudioParams.Default.WithVolume(-1f));
 
             if (string.IsNullOrEmpty(food.TrashPrototype))
-                EntityManager.QueueDeleteEntity(((IComponent) food).Owner);
+                EntityManager.QueueDeleteEntity(food.Owner);
             else
-                DeleteAndSpawnTrash(food);
+                DeleteAndSpawnTrash(food, uid);
         }
 
         private bool TryGetRequiredUtensils(EntityUid user, FoodComponent component,
             out List<UtensilComponent> utensils, HandsComponent? hands = null)
         {
-            utensils = new();
+            utensils = new List<UtensilComponent>();
 
             if (component.Utensil != UtensilType.None)
                 return true;
@@ -440,10 +340,10 @@ namespace Content.Server.Nutrition.EntitySystems
 
             var usedTypes = UtensilType.None;
 
-            foreach (var item in hands.GetAllHeldItems())
+            foreach (var item in _handsSystem.EnumerateHeld(user, hands))
             {
                 // Is utensil?
-                if (!EntityManager.TryGetComponent(item.Owner, out UtensilComponent? utensil))
+                if (!EntityManager.TryGetComponent(item, out UtensilComponent? utensil))
                     continue;
 
                 if ((utensil.Types & component.Utensil) != 0 && // Acceptable type?
@@ -458,16 +358,11 @@ namespace Content.Server.Nutrition.EntitySystems
             // If "required" field is set, try to block eating without proper utensils used
             if (component.UtensilRequired && (usedTypes & component.Utensil) != component.Utensil)
             {
-                _popupSystem.PopupEntity(Loc.GetString("food-you-need-to-hold-utensil", ("utensil", component.Utensil ^ usedTypes)), user, Filter.Entities(user));
+                _popupSystem.PopupEntity(Loc.GetString("food-you-need-to-hold-utensil", ("utensil", component.Utensil ^ usedTypes)), user, user);
                 return false;
             }
 
             return true;
-        }
-
-        private void OnForceFeedCancelled(ForceFeedCancelledEvent args)
-        {
-            args.Food.CancelToken = null;
         }
 
         /// <summary>
@@ -478,7 +373,7 @@ namespace Content.Server.Nutrition.EntitySystems
             if (args.Cancelled)
                 return;
 
-            IngestionBlockerComponent blocker;
+            IngestionBlockerComponent? blocker;
 
             if (_inventorySystem.TryGetSlotEntity(uid, "mask", out var maskUid) &&
                 EntityManager.TryGetComponent(maskUid, out blocker) &&
@@ -514,10 +409,17 @@ namespace Content.Server.Nutrition.EntitySystems
             {
                 var name = EntityManager.GetComponent<MetaDataComponent>(attempt.Blocker.Value).EntityName;
                 _popupSystem.PopupEntity(Loc.GetString("food-system-remove-mask", ("entity", name)),
-                    uid, Filter.Entities(popupUid.Value));
+                    uid, popupUid.Value);
             }
 
             return attempt.Cancelled;
+        }
+
+        private record struct FoodData(Solution FoodSolution, string FlavorMessage, List<UtensilComponent> Utensils)
+        {
+            public readonly Solution FoodSolution = FoodSolution;
+            public readonly string FlavorMessage = FlavorMessage;
+            public readonly List<UtensilComponent> Utensils = Utensils;
         }
     }
 }

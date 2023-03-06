@@ -1,17 +1,14 @@
 ﻿using System.Linq;
-using System.Threading.Tasks;
 using Content.Shared.Construction;
 using JetBrains.Annotations;
+using Robust.Server.Containers;
 using Robust.Shared.Containers;
-using Robust.Shared.GameObjects;
-using Robust.Shared.IoC;
-using Robust.Shared.Serialization.Manager.Attributes;
 
 namespace Content.Server.Construction.Completions
 {
     [UsedImplicitly]
     [DataDefinition]
-    public class EmptyContainer : IGraphAction
+    public sealed class EmptyContainer : IGraphAction
     {
         [DataField("container")] public string Container { get; private set; } = string.Empty;
 
@@ -20,15 +17,9 @@ namespace Content.Server.Construction.Completions
             if (!entityManager.TryGetComponent(uid, out ContainerManagerComponent? containerManager) ||
                 !containerManager.TryGetContainer(Container, out var container)) return;
 
-            // TODO: Use container system methods.
+            var containerSys = entityManager.EntitySysManager.GetEntitySystem<ContainerSystem>();
             var transform = entityManager.GetComponent<TransformComponent>(uid);
-            foreach (var contained in container.ContainedEntities.ToArray())
-            {
-                container.ForceRemove(contained);
-                var cTransform = entityManager.GetComponent<TransformComponent>(contained);
-                cTransform.Coordinates = transform.Coordinates;
-                cTransform.AttachToGridOrMap();
-            }
+            containerSys.EmptyContainer(container, true, transform.Coordinates, true);
         }
     }
 }

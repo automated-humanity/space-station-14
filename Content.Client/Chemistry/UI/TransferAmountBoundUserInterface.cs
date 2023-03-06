@@ -6,7 +6,7 @@ using Robust.Client.GameObjects;
 namespace Content.Client.Chemistry.UI
 {
     [UsedImplicitly]
-    public class TransferAmountBoundUserInterface : BoundUserInterface
+    public sealed class TransferAmountBoundUserInterface : BoundUserInterface
     {
         private TransferAmountWindow? _window;
 
@@ -27,7 +27,7 @@ namespace Content.Client.Chemistry.UI
             _window.OpenCentered();
         }
 
-        public TransferAmountBoundUserInterface(ClientUserInterfaceComponent owner, object uiKey) : base(owner, uiKey)
+        public TransferAmountBoundUserInterface(ClientUserInterfaceComponent owner, Enum uiKey) : base(owner, uiKey)
         {
         }
 

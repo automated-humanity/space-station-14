@@ -1,9 +1,6 @@
-using System;
 using System.Threading;
 using Content.Server.Chat.Managers;
-using Robust.Shared.GameObjects;
-using Robust.Shared.IoC;
-using Robust.Shared.Localization;
+using Content.Server.GameTicking.Rules.Configurations;
 using Timer = Robust.Shared.Timing.Timer;
 
 namespace Content.Server.GameTicking.Rules;
@@ -26,17 +23,20 @@ public sealed class MaxTimeRestartRuleSystem : GameRuleSystem
         SubscribeLocalEvent<GameRunLevelChangedEvent>(RunLevelChanged);
     }
 
-    public override void Added()
+    public override void Started()
     {
+        if (Configuration is not MaxTimeRestartRuleConfiguration maxTimeRestartConfig)
+            return;
+
+        RoundMaxTime = maxTimeRestartConfig.RoundMaxTime;
+        RoundEndDelay = maxTimeRestartConfig.RoundEndDelay;
+
         if(GameTicker.RunLevel == GameRunLevel.InRound)
             RestartTimer();
     }
 
-    public override void Removed()
+    public override void Ended()
     {
-        RoundMaxTime = TimeSpan.FromMinutes(5);
-        RoundEndDelay = TimeSpan.FromMinutes(10);
-
         StopTimer();
     }
 
@@ -63,7 +63,7 @@ public sealed class MaxTimeRestartRuleSystem : GameRuleSystem
 
     private void RunLevelChanged(GameRunLevelChangedEvent args)
     {
-        if (!Enabled)
+        if (!RuleAdded)
             return;
 
         switch (args.New)

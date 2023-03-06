@@ -1,19 +1,11 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
+﻿using System.Linq;
 using Content.Shared.Light.Component;
 using JetBrains.Annotations;
 using Robust.Client.Animations;
 using Robust.Client.GameObjects;
 using Robust.Shared.Animations;
-using Robust.Shared.GameObjects;
-using Robust.Shared.IoC;
-using Robust.Shared.Log;
-using Robust.Shared.Maths;
 using Robust.Shared.Random;
 using Robust.Shared.Serialization;
-using Robust.Shared.Serialization.Manager.Attributes;
-using Robust.Shared.ViewVariables;
 
 namespace Content.Client.Light.Components
 {
@@ -29,25 +21,24 @@ namespace Content.Client.Light.Components
         protected IEntityManager _entMan = default!;
         protected IRobustRandom _random = default!;
 
-        [DataField("id")] [ViewVariables] public string ID { get; set; } = string.Empty;
+        [DataField("id")] public string ID { get; set; } = string.Empty;
 
         [DataField("property")]
-        [ViewVariables]
         public virtual string Property { get; protected set; } = "Radius";
 
-        [DataField("isLooped")] [ViewVariables] public bool IsLooped { get; set; }
+        [DataField("isLooped")] public bool IsLooped { get; set; }
 
-        [DataField("enabled")] [ViewVariables] public bool Enabled { get; set; }
+        [DataField("enabled")] public bool Enabled { get; set; }
 
-        [DataField("startValue")] [ViewVariables] public float StartValue { get; set; } = 0f;
+        [DataField("startValue")] public float StartValue { get; set; } = 0f;
 
-        [DataField("endValue")] [ViewVariables] public float EndValue { get; set; } = 2f;
+        [DataField("endValue")] public float EndValue { get; set; } = 2f;
 
-        [DataField("minDuration")] [ViewVariables] public float MinDuration { get; set; } = -1f;
+        [DataField("minDuration")] public float MinDuration { get; set; } = -1f;
 
-        [DataField("maxDuration")] [ViewVariables] public float MaxDuration { get; set; } = 2f;
+        [DataField("maxDuration")] public float MaxDuration { get; set; } = 2f;
 
-        [DataField("interpolate")] [ViewVariables] public AnimationInterpolationMode InterpolateMode { get; set; } = AnimationInterpolationMode.Linear;
+        [DataField("interpolate")] public AnimationInterpolationMode InterpolateMode { get; set; } = AnimationInterpolationMode.Linear;
 
         [ViewVariables] protected float MaxTime { get; set; }
 
@@ -120,7 +111,7 @@ namespace Content.Client.Light.Components
     /// A light behaviour that alternates between StartValue and EndValue
     /// </summary>
     [UsedImplicitly]
-    public class PulseBehaviour : LightBehaviourAnimationTrack
+    public sealed class PulseBehaviour : LightBehaviourAnimationTrack
     {
         public override (int KeyFrameIndex, float FramePlayingTime) AdvancePlayback(
             object context, int prevKeyFrameIndex, float prevPlayingTime, float frameTime)
@@ -175,8 +166,15 @@ namespace Content.Client.Light.Components
     /// A light behaviour that interpolates from StartValue to EndValue
     /// </summary>
     [UsedImplicitly]
-    public class FadeBehaviour : LightBehaviourAnimationTrack
+    public sealed class FadeBehaviour : LightBehaviourAnimationTrack
     {
+        /// <summary>
+        /// Automatically reverse the animation when EndValue is reached. In this particular case, MaxTime specifies the
+        /// time of the full animation, including the reverse interpolation.
+        /// </summary>
+        [DataField("reverseWhenFinished")]
+        public bool ReverseWhenFinished { get; set; }
+
         public override (int KeyFrameIndex, float FramePlayingTime) AdvancePlayback(
             object context, int prevKeyFrameIndex, float prevPlayingTime, float frameTime)
         {
@@ -189,21 +187,41 @@ namespace Content.Client.Light.Components
                 return (-1, playingTime);
             }
 
-            switch (InterpolateMode)
+            // From 0 to MaxTime/2, we go from StartValue to EndValue. From MaxTime/2 to MaxTime, we reverse this interpolation.
+            if (ReverseWhenFinished)
             {
-                case AnimationInterpolationMode.Linear:
-                    ApplyProperty(InterpolateLinear(StartValue, EndValue, interpolateValue));
-                    break;
-                case AnimationInterpolationMode.Cubic:
-                    ApplyProperty(InterpolateCubic(EndValue, StartValue, EndValue, StartValue, interpolateValue));
-                    break;
-                default:
-                case AnimationInterpolationMode.Nearest:
-                    ApplyProperty(interpolateValue < 0.5f ? StartValue : EndValue);
-                    break;
+                if (interpolateValue < 0.5f)
+                {
+                    ApplyInterpolation(StartValue, EndValue, interpolateValue*2);
+                }
+                else
+                {
+                    ApplyInterpolation(EndValue, StartValue, (interpolateValue-0.5f)*2);
+                }
+            }
+            else
+            {
+                ApplyInterpolation(StartValue, EndValue, interpolateValue);
             }
 
             return (-1, playingTime);
+        }
+
+        private void ApplyInterpolation(float start, float end, float interpolateValue)
+        {
+            switch (InterpolateMode)
+            {
+                case AnimationInterpolationMode.Linear:
+                    ApplyProperty(InterpolateLinear(start, end, interpolateValue));
+                    break;
+                case AnimationInterpolationMode.Cubic:
+                    ApplyProperty(InterpolateCubic(end, start, end, start, interpolateValue));
+                    break;
+                default:
+                case AnimationInterpolationMode.Nearest:
+                    ApplyProperty(interpolateValue < 0.5f ? start : end);
+                    break;
+            }
         }
     }
 
@@ -211,7 +229,7 @@ namespace Content.Client.Light.Components
     /// A light behaviour that interpolates using random values chosen between StartValue and EndValue.
     /// </summary>
     [UsedImplicitly]
-    public class RandomizeBehaviour : LightBehaviourAnimationTrack
+    public sealed class RandomizeBehaviour : LightBehaviourAnimationTrack
     {
         private float _randomValue1;
         private float _randomValue2;
@@ -277,10 +295,9 @@ namespace Content.Client.Light.Components
     /// </summary>
     [UsedImplicitly]
     [DataDefinition]
-    public class ColorCycleBehaviour : LightBehaviourAnimationTrack, ISerializationHooks
+    public sealed class ColorCycleBehaviour : LightBehaviourAnimationTrack, ISerializationHooks
     {
         [DataField("property")]
-        [ViewVariables]
         public override string Property { get; protected set; } = "Color";
 
         [DataField("colors")] public List<Color> ColorsToCycle { get; set; } = new();
@@ -340,14 +357,14 @@ namespace Content.Client.Light.Components
     /// A component which applies a specific behaviour to a PointLightComponent on its owner.
     /// </summary>
     [RegisterComponent]
-    public class LightBehaviourComponent : SharedLightBehaviourComponent, ISerializationHooks
+    public sealed class LightBehaviourComponent : SharedLightBehaviourComponent, ISerializationHooks
     {
         [Dependency] private readonly IEntityManager _entMan = default!;
         [Dependency] private readonly IRobustRandom _random = default!;
 
         private const string KeyPrefix = nameof(LightBehaviourComponent);
 
-        public class AnimationContainer
+        public sealed class AnimationContainer
         {
             public AnimationContainer(int key, Animation animation, LightBehaviourAnimationTrack track)
             {
@@ -369,11 +386,8 @@ namespace Content.Client.Light.Components
         [ViewVariables(VVAccess.ReadOnly)]
         private readonly List<AnimationContainer> _animations = new();
 
-        private float _originalRadius;
-        private float _originalEnergy;
-        private Angle _originalRotation;
-        private Color _originalColor;
-        private bool _originalEnabled;
+        [ViewVariables(VVAccess.ReadOnly)]
+        private Dictionary<string, object> _originalPropertyValues = new();
 
         void ISerializationHooks.AfterDeserialization()
         {
@@ -394,8 +408,6 @@ namespace Content.Client.Light.Components
         protected override void Startup()
         {
             base.Startup();
-
-            CopyLightSettings();
 
             // TODO: Do NOT ensure component here. And use eventbus events instead...
             Owner.EnsureComponent<AnimationPlayerComponent>();
@@ -445,15 +457,15 @@ namespace Content.Client.Light.Components
         /// <summary>
         /// If we disable all the light behaviours we want to be able to revert the light to its original state.
         /// </summary>
-        private void CopyLightSettings()
+        private void CopyLightSettings(string property)
         {
             if (_entMan.TryGetComponent(Owner, out PointLightComponent? light))
             {
-                _originalColor = light.Color;
-                _originalEnabled = light.Enabled;
-                _originalEnergy = light.Energy;
-                _originalRadius = light.Radius;
-                _originalRotation = light.Rotation;
+                var propertyValue = AnimationHelper.GetAnimatableProperty(light, property);
+                if (propertyValue != null)
+                {
+                    _originalPropertyValues.Add(property, propertyValue);
+                }
             }
             else
             {
@@ -479,6 +491,7 @@ namespace Content.Client.Light.Components
                 {
                     if (!animation.HasRunningAnimation(KeyPrefix + container.Key))
                     {
+                        CopyLightSettings(container.LightBehaviour.Property);
                         container.LightBehaviour.UpdatePlaybackValues(container.Animation);
                         animation.Play(container.Animation, KeyPrefix + container.Key);
                     }
@@ -526,12 +539,27 @@ namespace Content.Client.Light.Components
 
             if (resetToOriginalSettings && _entMan.TryGetComponent(Owner, out PointLightComponent? light))
             {
-                light.Color = _originalColor;
-                light.Enabled = _originalEnabled;
-                light.Energy = _originalEnergy;
-                light.Radius = _originalRadius;
-                light.Rotation = _originalRotation;
+                foreach (var (property, value) in _originalPropertyValues)
+                {
+                    AnimationHelper.SetAnimatableProperty(light, property, value);
+                }
             }
+
+            _originalPropertyValues.Clear();
+        }
+
+        /// <summary>
+        /// Checks if at least one behaviour is running.
+        /// </summary>
+        /// <returns>Whether at least one behaviour is running, false if none is.</returns>
+        public bool HasRunningBehaviours()
+        {
+            if (!_entMan.TryGetComponent(Owner, out AnimationPlayerComponent? animation))
+            {
+                return false;
+            }
+
+            return _animations.Any(container => animation.HasRunningAnimation(KeyPrefix + container.Key));
         }
 
         /// <summary>

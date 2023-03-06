@@ -1,8 +1,10 @@
 using System.Runtime.Intrinsics.X86;
 using BenchmarkDotNet.Attributes;
+using Robust.Shared.Analyzers;
 
 namespace Content.Benchmarks
 {
+    [Virtual]
     public class StereoToMonoBenchmark
     {
         [Params(128, 256, 512)]

@@ -1,15 +1,10 @@
+using System.Text.Json.Serialization;
 using Content.Shared.Damage.Prototypes;
-using Robust.Shared.IoC;
-using Robust.Shared.Log;
+using Content.Shared.FixedPoint;
+using JetBrains.Annotations;
 using Robust.Shared.Prototypes;
-using Robust.Shared.Serialization.Manager.Attributes;
 using Robust.Shared.Serialization.TypeSerializers.Implementations.Custom.Prototype.Dictionary;
 using Robust.Shared.Utility;
-using Robust.Shared.ViewVariables;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using Content.Shared.FixedPoint;
 
 namespace Content.Shared.Damage
 {
@@ -21,29 +16,26 @@ namespace Content.Shared.Damage
     ///     functions to apply resistance sets and supports basic math operations to modify this dictionary.
     /// </remarks>
     [DataDefinition]
-    public class DamageSpecifier
+    public sealed class DamageSpecifier : IEquatable<DamageSpecifier>
     {
+        // These exist solely so the wiki works. Please do not touch them or use them.
+        [JsonPropertyName("types")]
         [DataField("types", customTypeSerializer: typeof(PrototypeIdDictionarySerializer<FixedPoint2, DamageTypePrototype>))]
+        [UsedImplicitly]
         private readonly Dictionary<string,FixedPoint2>? _damageTypeDictionary;
 
+        [JsonPropertyName("groups")]
         [DataField("groups", customTypeSerializer: typeof(PrototypeIdDictionarySerializer<FixedPoint2, DamageGroupPrototype>))]
+        [UsedImplicitly]
         private readonly Dictionary<string, FixedPoint2>? _damageGroupDictionary;
 
         /// <summary>
         ///     Main DamageSpecifier dictionary. Most DamageSpecifier functions exist to somehow modifying this.
         /// </summary>
+        [JsonIgnore]
         [ViewVariables(VVAccess.ReadWrite)]
-        public Dictionary<string, FixedPoint2> DamageDict
-        {
-            get
-            {
-                if (_damageDict == null)
-                    DeserializeDamage();
-                return _damageDict!;
-            }
-            set => _damageDict = value;
-        }
-        private Dictionary<string, FixedPoint2>? _damageDict;
+        [IncludeDataField(customTypeSerializer: typeof(DamageSpecifierDictionarySerializer), readOnly: true)]
+        public Dictionary<string, FixedPoint2> DamageDict { get; set; } = new();
 
         /// <summary>
         ///     Sum of the damage values.
@@ -53,11 +45,13 @@ namespace Content.Shared.Damage
         ///     in another. For this purpose, you should instead use <see cref="TrimZeros()"/> and then check the <see
         ///     cref="Empty"/> property.
         /// </remarks>
+        [JsonIgnore]
         public FixedPoint2 Total => DamageDict.Values.Sum();
 
         /// <summary>
         ///     Whether this damage specifier has any entries.
         /// </summary>
+        [JsonIgnore]
         public bool Empty => DamageDict.Count == 0;
 
         #region constructors
@@ -87,56 +81,19 @@ namespace Content.Shared.Damage
         /// </summary>
         public DamageSpecifier(DamageGroupPrototype group, FixedPoint2 value)
         {
-            _damageGroupDictionary = new() { { group.ID, value } };
+            // Simply distribute evenly (except for rounding).
+            // We do this by reducing remaining the # of types and damage every loop.
+            var remainingTypes = group.DamageTypes.Count;
+            var remainingDamage = value;
+            foreach (var damageType in group.DamageTypes)
+            {
+                var damage = remainingDamage / FixedPoint2.New(remainingTypes);
+                DamageDict.Add(damageType, damage);
+                remainingDamage -= damage;
+                remainingTypes -= 1;
+            }
         }
         #endregion constructors
-
-        /// <summary>
-        ///     Combines the damage group and type datafield dictionaries FixedPoint2o a single damage dictionary.
-        /// </summary>
-        public void DeserializeDamage()
-        {
-            // Add all the damage types by just copying the type dictionary (if it is not null).
-            if (_damageTypeDictionary != null)
-            {
-                _damageDict = new(_damageTypeDictionary);
-            }
-            else
-            {
-                _damageDict = new();
-            }
-
-            if (_damageGroupDictionary == null)
-                return;
-
-            // Then resolve damage groups and add them
-            var prototypeManager = IoCManager.Resolve<IPrototypeManager>();
-            foreach (var entry in _damageGroupDictionary)
-            {
-                if (!prototypeManager.TryIndex<DamageGroupPrototype>(entry.Key, out var group))
-                {
-                    // This can happen if deserialized before prototypes are loaded.
-                    Logger.Error($"Unknown damage group given to DamageSpecifier: {entry.Key}");
-                    continue;
-                }
-
-                // Simply distribute evenly (except for rounding).
-                // We do this by reducing remaining the # of types and damage every loop.
-                var remainingTypes = group.DamageTypes.Count;
-                var remainingDamage = entry.Value;
-                foreach (var damageType in group.DamageTypes)
-                {
-                    var damage = remainingDamage / FixedPoint2.New(remainingTypes);
-                    if (!_damageDict.TryAdd(damageType, damage))
-                    {
-                        // Key already exists, add values
-                        _damageDict[damageType] += damage;
-                    }
-                    remainingDamage -= damage;
-                    remainingTypes -= 1;
-                }
-            }
-        }
 
         /// <summary>
         ///     Reduce (or increase) damages by applying a damage modifier set.
@@ -305,10 +262,11 @@ namespace Content.Shared.Damage
         ///     total of each group. If no members of a group are present in this <see cref="DamageSpecifier"/>, the
         ///     group is not included in the resulting dictionary.
         /// </remarks>
-        public Dictionary<string, FixedPoint2> GetDamagePerGroup()
+        public Dictionary<string, FixedPoint2> GetDamagePerGroup(IPrototypeManager? protoManager = null)
         {
+            IoCManager.Resolve(ref protoManager);
             var damageGroupDict = new Dictionary<string, FixedPoint2>();
-            foreach (var group in IoCManager.Resolve<IPrototypeManager>().EnumeratePrototypes<DamageGroupPrototype>())
+            foreach (var group in protoManager.EnumeratePrototypes<DamageGroupPrototype>())
             {
                 if (TryGetDamageInGroup(group, out var value))
                 {
@@ -377,7 +335,21 @@ namespace Content.Shared.Damage
             return newDamage;
         }
 
-        public static DamageSpecifier operator -(DamageSpecifier damageSpecA, DamageSpecifier damageSpecB) => damageSpecA + -damageSpecB;
+        // Here we define the subtraction operator explicitly, rather than implicitly via something like X + (-1 * Y).
+        // This is faster because FixedPoint2 multiplication is somewhat involved.
+        public static DamageSpecifier operator -(DamageSpecifier damageSpecA, DamageSpecifier damageSpecB)
+        {
+            DamageSpecifier newDamage = new(damageSpecA);
+
+            foreach (var entry in damageSpecB.DamageDict)
+            {
+                if (!newDamage.DamageDict.TryAdd(entry.Key, -entry.Value))
+                {
+                    newDamage.DamageDict[entry.Key] -= entry.Value;
+                }
+            }
+            return newDamage;
+        }
 
         public static DamageSpecifier operator +(DamageSpecifier damageSpec) => damageSpec;
 
@@ -386,6 +358,20 @@ namespace Content.Shared.Damage
         public static DamageSpecifier operator *(float factor, DamageSpecifier damageSpec) => damageSpec * factor;
 
         public static DamageSpecifier operator *(FixedPoint2 factor, DamageSpecifier damageSpec) => damageSpec * factor;
+
+        public bool Equals(DamageSpecifier? other)
+        {
+            if (other == null || DamageDict.Count != other.DamageDict.Count)
+                return false;
+
+            foreach (var (key, value) in DamageDict)
+            {
+                if (!other.DamageDict.TryGetValue(key, out var otherValue) || value != otherValue)
+                    return false;
+            }
+
+            return true;
+        }
     }
     #endregion
 }

@@ -1,6 +1,5 @@
-﻿using Content.Shared.Light.Component;
+using Content.Shared.Light.Component;
 using Robust.Shared.Audio;
-using Robust.Shared.GameObjects;
 
 namespace Content.Client.Light.Components
 {
@@ -8,7 +7,7 @@ namespace Content.Client.Light.Components
     ///     Component that represents a handheld expendable light which can be activated and eventually dies over time.
     /// </summary>
     [RegisterComponent]
-    public class ExpendableLightComponent : SharedExpendableLightComponent
+    public sealed class ExpendableLightComponent : SharedExpendableLightComponent
     {
         public IPlayingAudioStream? PlayingStream { get; set; }
     }

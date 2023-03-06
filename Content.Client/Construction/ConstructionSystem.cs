@@ -1,20 +1,15 @@
-﻿using System;
-using System.Collections.Generic;
 using Content.Shared.Construction;
 using Content.Shared.Construction.Prototypes;
 using Content.Shared.Examine;
 using Content.Shared.Input;
-using Content.Shared.Interaction.Helpers;
+using Content.Shared.Interaction;
+using Content.Shared.Wall;
 using JetBrains.Annotations;
 using Robust.Client.GameObjects;
 using Robust.Client.Player;
-using Robust.Shared.GameObjects;
 using Robust.Shared.Input;
 using Robust.Shared.Input.Binding;
-using Robust.Shared.IoC;
-using Robust.Shared.Localization;
 using Robust.Shared.Map;
-using Robust.Shared.Maths;
 using Robust.Shared.Prototypes;
 
 namespace Content.Client.Construction
@@ -23,10 +18,11 @@ namespace Content.Client.Construction
     /// The client-side implementation of the construction system, which is used for constructing entities in game.
     /// </summary>
     [UsedImplicitly]
-    public class ConstructionSystem : SharedConstructionSystem
+    public sealed class ConstructionSystem : SharedConstructionSystem
     {
         [Dependency] private readonly IPlayerManager _playerManager = default!;
         [Dependency] private readonly IPrototypeManager _prototypeManager = default!;
+        [Dependency] private readonly SharedInteractionSystem _interactionSystem = default!;
 
         private readonly Dictionary<int, ConstructionGhostComponent> _ghosts = new();
         private readonly Dictionary<string, ConstructionGuide> _guideCache = new();
@@ -162,8 +158,12 @@ namespace Content.Client.Construction
                 return;
             }
 
+            if (GhostPresent(loc)) return;
+
             // This InRangeUnobstructed should probably be replaced with "is there something blocking us in that tile?"
-            if (GhostPresent(loc) || !user.InRangeUnobstructed(loc, 20f, ignoreInsideBlocker: prototype.CanBuildInImpassable)) return;
+            var predicate = GetPredicate(prototype.CanBuildInImpassable, loc.ToMap(EntityManager));
+            if (!_interactionSystem.InRangeUnobstructed(user, loc, 20f, predicate: predicate))
+                return;
 
             foreach (var condition in prototype.Conditions)
             {
@@ -179,10 +179,17 @@ namespace Content.Client.Construction
             _ghosts.Add(comp.GhostId, comp);
             var sprite = EntityManager.GetComponent<SpriteComponent>(ghost);
             sprite.Color = new Color(48, 255, 48, 128);
-            sprite.AddBlankLayer(0); // There is no way to actually check if this already exists, so we blindly insert a new one
-            sprite.LayerSetSprite(0, prototype.Icon);
-            sprite.LayerSetShader(0, "unshaded");
-            sprite.LayerSetVisible(0, true);
+
+            for (int i = 0; i < prototype.Layers.Count; i++)
+            {
+                sprite.AddBlankLayer(i); // There is no way to actually check if this already exists, so we blindly insert a new one
+                sprite.LayerSetSprite(i, prototype.Layers[i]);
+                sprite.LayerSetShader(i, "unshaded");
+                sprite.LayerSetVisible(i, true);
+            }
+
+            if (prototype.CanBuildInImpassable)
+                EnsureComp<WallMountComponent>(ghost).Arc = new(Math.Tau);
         }
 
         /// <summary>
@@ -246,7 +253,7 @@ namespace Content.Client.Construction
         }
     }
 
-    public class CraftingAvailabilityChangedArgs : EventArgs
+    public sealed class CraftingAvailabilityChangedArgs : EventArgs
     {
         public bool Available { get; }
 

@@ -1,14 +1,13 @@
-﻿using System;
-using System.Collections.Immutable;
+﻿using System.Collections.Immutable;
 using System.Threading.Tasks;
-using Content.Server.Administration.Managers;
 using Content.Server.Database;
+using Content.Server.GameTicking;
 using Content.Server.Preferences.Managers;
-using Content.Shared;
 using Content.Shared.CCVar;
+using Content.Shared.GameTicking;
+using Content.Shared.Players.PlayTimeTracking;
 using Robust.Server.Player;
 using Robust.Shared.Configuration;
-using Robust.Shared.IoC;
 using Robust.Shared.Network;
 
 
@@ -44,16 +43,14 @@ namespace Content.Server.Connection
             var ban = await _db.GetServerBanByIpAsync(eventArgs.Connection.RemoteEndPoint.Address);
             if (ban != null)
             {
-                var expires = "This is a permanent ban.";
+                var expires = Loc.GetString("ban-banned-permanent");
                 if (ban.ExpirationTime is { } expireTime)
                 {
                     var duration = expireTime - ban.BanTime;
                     var utc = expireTime.ToUniversalTime();
-                    expires = $"This ban is for {duration.TotalMinutes} minutes and will expire at {utc:f} UTC.";
+                    expires = Loc.GetString("ban-expires", ("duration", duration.TotalMinutes.ToString("N0")), ("time", utc.ToString("f")));
                 }
-                var reason = $@"You, or another user of this computer or connection is banned from playing here.
-The ban reason is: ""{ban.Reason}""
-{expires}";
+                var reason = Loc.GetString("ban-banned-1") + "\n" + Loc.GetString("ban-banned-2", ("reason", this.Reason)) + "\n" + expires;;
                 return NetApproval.Deny(reason);
             }
 
@@ -62,6 +59,35 @@ The ban reason is: ""{ban.Reason}""
         */
 
         private async Task NetMgrOnConnecting(NetConnectingArgs e)
+        {
+            var deny = await ShouldDeny(e);
+
+            var addr = e.IP.Address;
+            var userId = e.UserId;
+
+            if (deny != null)
+            {
+                var (reason, msg, banHits) = deny.Value;
+
+                var id = await _db.AddConnectionLogAsync(userId, e.UserName, addr, e.UserData.HWId, reason);
+                if (banHits is { Count: > 0 })
+                    await _db.AddServerBanHitsAsync(id, banHits);
+
+                e.Deny(msg);
+            }
+            else
+            {
+                await _db.AddConnectionLogAsync(userId, e.UserName, addr, e.UserData.HWId, null);
+
+                if (!ServerPreferencesManager.ShouldStorePrefs(e.AuthType))
+                    return;
+
+                await _db.UpdatePlayerRecordAsync(userId, e.UserName, addr, e.UserData.HWId);
+            }
+        }
+
+        private async Task<(ConnectionDenyReason, string, List<ServerBanDef>? bansHit)?> ShouldDeny(
+            NetConnectingArgs e)
         {
             // Check if banned.
             var addr = e.IP.Address;
@@ -74,26 +100,74 @@ The ban reason is: ""{ban.Reason}""
                 hwId = null;
             }
 
-            if (_plyMgr.PlayerCount >= _cfg.GetCVar(CCVars.SoftMaxPlayers) && await _dbManager.GetAdminDataForAsync(e.UserId) is null)
+            var adminData = await _dbManager.GetAdminDataForAsync(e.UserId);
+
+            if (_cfg.GetCVar(CCVars.PanicBunkerEnabled))
             {
-                e.Deny("The server is full!");
-                return;
+                var showReason = _cfg.GetCVar(CCVars.PanicBunkerShowReason);
+
+                var minMinutesAge = _cfg.GetCVar(CCVars.PanicBunkerMinAccountAge);
+                var record = await _dbManager.GetPlayerRecordByUserId(userId);
+                var validAccountAge = record != null &&
+                                        record.FirstSeenTime.CompareTo(DateTimeOffset.Now - TimeSpan.FromMinutes(minMinutesAge)) <= 0;
+
+                if (showReason && !validAccountAge)
+                {
+                    return (ConnectionDenyReason.Panic,
+                        Loc.GetString("panic-bunker-account-denied-reason",
+                            ("reason", Loc.GetString("panic-bunker-account-reason-account", ("minutes", minMinutesAge)))), null);
+                }
+
+                var minOverallHours = _cfg.GetCVar(CCVars.PanicBunkerMinOverallHours);
+                var overallTime = ( await _db.GetPlayTimes(e.UserId)).Find(p => p.Tracker == PlayTimeTrackingShared.TrackerOverall);
+                var haveMinOverallTime = overallTime != null && overallTime.TimeSpent.TotalHours > minOverallHours;
+
+                if (showReason && !haveMinOverallTime)
+                {
+                    return (ConnectionDenyReason.Panic,
+                        Loc.GetString("panic-bunker-account-denied-reason",
+                            ("reason", Loc.GetString("panic-bunker-account-reason-overall", ("hours", minOverallHours)))), null);
+                }
+
+                if (!validAccountAge || !haveMinOverallTime)
+                {
+                    return (ConnectionDenyReason.Panic, Loc.GetString("panic-bunker-account-denied"), null);
+                }
             }
 
-            var ban = await _db.GetServerBanAsync(addr, userId, hwId);
-            if (ban != null)
+            var wasInGame = EntitySystem.TryGet<GameTicker>(out var ticker) &&
+                            ticker.PlayerGameStatuses.TryGetValue(userId, out var status) &&
+                            status == PlayerGameStatus.JoinedGame;
+            if ((_plyMgr.PlayerCount >= _cfg.GetCVar(CCVars.SoftMaxPlayers) && adminData is null) && !wasInGame)
             {
-                e.Deny(ban.DisconnectMessage);
-                return;
+                return (ConnectionDenyReason.Full, Loc.GetString("soft-player-cap-full"), null);
             }
 
-            if (!ServerPreferencesManager.ShouldStorePrefs(e.AuthType))
+            var bans = await _db.GetServerBansAsync(addr, userId, hwId, includeUnbanned: false);
+            if (bans.Count > 0)
             {
-                return;
+                var firstBan = bans[0];
+                return (ConnectionDenyReason.Ban, firstBan.DisconnectMessage, bans);
             }
 
-            await _db.UpdatePlayerRecordAsync(userId, e.UserName, addr, e.UserData.HWId);
-            await _db.AddConnectionLogAsync(userId, e.UserName, addr, e.UserData.HWId);
+            if (_cfg.GetCVar(CCVars.WhitelistEnabled))
+            {
+                var min = _cfg.GetCVar(CCVars.WhitelistMinPlayers);
+                var max = _cfg.GetCVar(CCVars.WhitelistMaxPlayers);
+                var playerCountValid = _plyMgr.PlayerCount >= min && _plyMgr.PlayerCount < max;
+
+                if (playerCountValid && await _db.GetWhitelistStatusAsync(userId) == false
+                                     && adminData is null)
+                {
+                    var msg = Loc.GetString(_cfg.GetCVar(CCVars.WhitelistReason));
+                    // was the whitelist playercount changed?
+                    if (min > 0 || max < int.MaxValue)
+                        msg += "\n" + Loc.GetString("whitelist-playercount-invalid", ("min", min), ("max", max));
+                    return (ConnectionDenyReason.Whitelist, msg, null);
+                }
+            }
+
+            return null;
         }
 
         private async Task<NetUserId?> AssignUserIdCallback(string name)

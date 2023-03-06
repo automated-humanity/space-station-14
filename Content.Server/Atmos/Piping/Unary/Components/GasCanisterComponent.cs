@@ -1,15 +1,11 @@
 using Content.Shared.Atmos;
-using Robust.Shared.GameObjects;
-using Robust.Shared.Serialization.Manager.Attributes;
-using Robust.Shared.ViewVariables;
+using Robust.Shared.Audio;
 
 namespace Content.Server.Atmos.Piping.Unary.Components
 {
     [RegisterComponent]
-    public class GasCanisterComponent : Component
+    public sealed class GasCanisterComponent : Component, IGasMixtureHolder
     {
-        public override string Name => "GasCanister";
-
         [ViewVariables(VVAccess.ReadWrite)]
         [DataField("port")]
         public string PortName { get; set; } = "port";
@@ -23,7 +19,7 @@ namespace Content.Server.Atmos.Piping.Unary.Components
 
         [ViewVariables(VVAccess.ReadWrite)]
         [DataField("gasMixture")]
-        public GasMixture Air { get; } = new();
+        public GasMixture Air { get; set; } = new();
 
         /// <summary>
         ///     Last recorded pressure, for appearance-updating purposes.
@@ -57,5 +53,8 @@ namespace Content.Server.Atmos.Piping.Unary.Components
         [ViewVariables(VVAccess.ReadWrite)]
         [DataField("releaseValve")]
         public bool ReleaseValve { get; set; } = false;
+
+        [DataField("accessDeniedSound")]
+        public SoundSpecifier AccessDeniedSound = new SoundPathSpecifier("/Audio/Machines/custom_deny.ogg");
     }
 }

@@ -1,65 +1,109 @@
-using System.Collections.Generic;
-using System.Threading;
 using Content.Server.Power.Components;
 using JetBrains.Annotations;
 using Robust.Shared.Audio;
-using Robust.Shared.GameObjects;
-using Robust.Shared.IoC;
-using Robust.Shared.Localization;
 using Robust.Shared.Player;
-using Robust.Shared.Random;
+using Robust.Shared.Utility;
+using System.Threading;
+using Content.Server.Power.EntitySystems;
 using Timer = Robust.Shared.Timing.Timer;
+using System.Linq;
+using Robust.Shared.Random;
+using Content.Server.Station.Components;
 
 namespace Content.Server.StationEvents.Events
 {
     [UsedImplicitly]
-    public sealed class PowerGridCheck : StationEvent
+    public sealed class PowerGridCheck : StationEventSystem
     {
-        public override string Name => "PowerGridCheck";
-        public override float Weight => WeightNormal;
-        public override int? MaxOccurrences => 3;
-        public override string StartAnnouncement => Loc.GetString("station-event-power-grid-check-start-announcement");
-        protected override string EndAnnouncement => Loc.GetString("station-event-power-grid-check-end-announcement");
-        public override string? StartAudio => "/Audio/Announcements/power_off.ogg";
+        [Dependency] private readonly ApcSystem _apcSystem = default!;
+        [Dependency] private readonly SharedAudioSystem _audioSystem = default!;
 
-        // If you need EndAudio it's down below. Not set here because we can't play it at the normal time without spamming sounds.
-
-        protected override float StartAfter => 12.0f;
+        public override string Prototype => "PowerGridCheck";
 
         private CancellationTokenSource? _announceCancelToken;
 
         private readonly List<EntityUid> _powered = new();
+        private readonly List<EntityUid> _unpowered = new();
 
-        public override void Announce()
+        private const float SecondsUntilOff = 30.0f;
+
+        private int _numberPerSecond = 0;
+        private float UpdateRate => 1.0f / _numberPerSecond;
+        private float _frameTimeAccumulator = 0.0f;
+        private float _endAfter = 0.0f;
+
+        public override void Added()
         {
-            base.Announce();
-            EndAfter = IoCManager.Resolve<IRobustRandom>().Next(60, 120);
+            base.Added();
+            _endAfter = RobustRandom.Next(60, 120);
         }
 
-        public override void Startup()
+        public override void Started()
         {
-            var entityManager = IoCManager.Resolve<IEntityManager>();
+            if (StationSystem.Stations.Count == 0)
+                return;
+            var chosenStation = RobustRandom.Pick(StationSystem.Stations.ToList());
 
-            foreach (var component in entityManager.EntityQuery<ApcPowerReceiverComponent>(true))
+            foreach (var (apc, transform) in EntityQuery<ApcComponent, TransformComponent>(true))
             {
-                component.PowerDisabled = true;
-                _powered.Add(component.Owner);
+                if (apc.MainBreakerEnabled && CompOrNull<StationMemberComponent>(transform.GridUid)?.Station == chosenStation)
+                    _powered.Add(apc.Owner);
             }
 
-            base.Startup();
+            RobustRandom.Shuffle(_powered);
+
+            _numberPerSecond = Math.Max(1, (int)(_powered.Count / SecondsUntilOff)); // Number of APCs to turn off every second. At least one.
+
+            base.Started();
         }
 
-        public override void Shutdown()
+        public override void Update(float frameTime)
         {
-            var entMan = IoCManager.Resolve<IEntityManager>();
+            base.Update(frameTime);
 
-            foreach (var entity in _powered)
+            if (!RuleStarted)
+                return;
+
+            if (Elapsed > _endAfter)
             {
-                if (entMan.Deleted(entity)) continue;
+                ForceEndSelf();
+                return;
+            }
 
-                if (entMan.TryGetComponent(entity, out ApcPowerReceiverComponent? powerReceiverComponent))
+            var updates = 0;
+            _frameTimeAccumulator += frameTime;
+            if (_frameTimeAccumulator > UpdateRate)
+            {
+                updates = (int) (_frameTimeAccumulator / UpdateRate);
+                _frameTimeAccumulator -= UpdateRate * updates;
+            }
+
+            for (var i = 0; i < updates; i++)
+            {
+                if (_powered.Count == 0)
+                    break;
+
+                var selected = _powered.Pop();
+                if (EntityManager.Deleted(selected)) continue;
+                if (EntityManager.TryGetComponent<ApcComponent>(selected, out var apcComponent))
                 {
-                    powerReceiverComponent.PowerDisabled = false;
+                    if (apcComponent.MainBreakerEnabled)
+                        _apcSystem.ApcToggleBreaker(selected, apcComponent);
+                }
+                _unpowered.Add(selected);
+            }
+        }
+
+        public override void Ended()
+        {
+            foreach (var entity in _unpowered)
+            {
+                if (EntityManager.Deleted(entity)) continue;
+
+                if (EntityManager.TryGetComponent(entity, out ApcComponent? apcComponent))
+                {
+                    if(!apcComponent.MainBreakerEnabled)
+                        _apcSystem.ApcToggleBreaker(entity, apcComponent);
                 }
             }
 
@@ -68,11 +112,11 @@ namespace Content.Server.StationEvents.Events
             _announceCancelToken = new CancellationTokenSource();
             Timer.Spawn(3000, () =>
             {
-                SoundSystem.Play(Filter.Broadcast(), "/Audio/Announcements/power_on.ogg");
+                _audioSystem.PlayGlobal("/Audio/Announcements/power_on.ogg", Filter.Broadcast(), true, AudioParams.Default.WithVolume(-4f));
             }, _announceCancelToken.Token);
-            _powered.Clear();
+            _unpowered.Clear();
 
-            base.Shutdown();
+            base.Ended();
         }
     }
 }

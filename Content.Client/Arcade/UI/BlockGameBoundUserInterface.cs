@@ -4,11 +4,11 @@ using Robust.Shared.GameObjects;
 
 namespace Content.Client.Arcade.UI
 {
-    public class BlockGameBoundUserInterface : BoundUserInterface
+    public sealed class BlockGameBoundUserInterface : BoundUserInterface
     {
         private BlockGameMenu? _menu;
 
-        public BlockGameBoundUserInterface(ClientUserInterfaceComponent owner, object uiKey) : base(owner, uiKey)
+        public BlockGameBoundUserInterface(ClientUserInterfaceComponent owner, Enum uiKey) : base(owner, uiKey)
         {
         }
 
@@ -46,7 +46,7 @@ namespace Content.Client.Arcade.UI
                     _menu?.SetUsability(userMessage.IsPlayer);
                     break;
                 case BlockGameMessages.BlockGameSetScreenMessage statusMessage:
-                    if (statusMessage.isStarted) _menu?.SetStarted();
+                    if (statusMessage.IsStarted) _menu?.SetStarted();
                     _menu?.SetScreen(statusMessage.Screen);
                     if (statusMessage is BlockGameMessages.BlockGameGameOverScreenMessage gameOverScreenMessage)
                         _menu?.SetGameoverInfo(gameOverScreenMessage.FinalScore, gameOverScreenMessage.LocalPlacement, gameOverScreenMessage.GlobalPlacement);

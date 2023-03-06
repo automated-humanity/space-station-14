@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Content.Shared.Body.Components;
 using JetBrains.Annotations;
 using Robust.Client.GameObjects;
@@ -9,12 +9,12 @@ using Robust.Shared.ViewVariables;
 namespace Content.Client.Body.UI
 {
     [UsedImplicitly]
-    public class BodyScannerBoundUserInterface : BoundUserInterface
+    public sealed class BodyScannerBoundUserInterface : BoundUserInterface
     {
         [ViewVariables]
         private BodyScannerDisplay? _display;
 
-        public BodyScannerBoundUserInterface(ClientUserInterfaceComponent owner, object uiKey) : base(owner, uiKey) { }
+        public BodyScannerBoundUserInterface(ClientUserInterfaceComponent owner, Enum uiKey) : base(owner, uiKey) { }
 
         protected override void Open()
         {

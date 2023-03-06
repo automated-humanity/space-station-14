@@ -10,22 +10,20 @@ using Robust.Shared.GameObjects;
 using Robust.Shared.IoC;
 using Robust.Shared.Localization;
 using Robust.Shared.Prototypes;
-using static Content.Shared.Kitchen.Components.SharedMicrowaveComponent;
 
 namespace Content.Client.Kitchen.UI
 {
     [UsedImplicitly]
-    public class MicrowaveBoundUserInterface : BoundUserInterface
+    public sealed class MicrowaveBoundUserInterface : BoundUserInterface
     {
         [Dependency] private readonly IEntityManager _entityManager = default!;
-        [Dependency] private readonly IPrototypeManager _prototypeManager = default!;
 
         private MicrowaveMenu? _menu;
 
         private readonly Dictionary<int, EntityUid> _solids = new();
         private readonly Dictionary<int, Solution.ReagentQuantity> _reagents =new();
 
-        public MicrowaveBoundUserInterface(ClientUserInterfaceComponent owner, object uiKey) : base(owner,uiKey)
+        public MicrowaveBoundUserInterface(ClientUserInterfaceComponent owner, Enum uiKey) : base(owner,uiKey)
         {
         }
 
@@ -40,11 +38,6 @@ namespace Content.Client.Kitchen.UI
             _menu.IngredientsList.OnItemSelected += args =>
             {
                 SendMessage(new MicrowaveEjectSolidIndexedMessage(_solids[args.ItemIndex]));
-            };
-
-            _menu.IngredientsListReagents.OnItemSelected += args =>
-            {
-                SendMessage(new MicrowaveVaporizeReagentIndexedMessage(_reagents[args.ItemIndex]));
             };
 
             _menu.OnCookTimeSelected += (args,buttonIndex) =>
@@ -77,7 +70,7 @@ namespace Content.Client.Kitchen.UI
             }
 
             _menu?.ToggleBusyDisableOverlayPanel(cState.IsMicrowaveBusy);
-            RefreshContentsDisplay(cState.ReagentQuantities, cState.ContainedSolids);
+            RefreshContentsDisplay(cState.ContainedSolids);
 
             if (_menu == null) return;
 
@@ -90,21 +83,11 @@ namespace Content.Client.Kitchen.UI
                                                          ("time", cookTime));
         }
 
-        private void RefreshContentsDisplay(Solution.ReagentQuantity[] reagents, EntityUid[] containedSolids)
+        private void RefreshContentsDisplay(EntityUid[] containedSolids)
         {
             _reagents.Clear();
 
             if (_menu == null) return;
-
-            _menu.IngredientsListReagents.Clear();
-            for (var i = 0; i < reagents.Length; i++)
-            {
-                if (!_prototypeManager.TryIndex(reagents[i].ReagentId, out ReagentPrototype? proto)) continue;
-
-                var reagentAdded = _menu.IngredientsListReagents.AddItem($"{reagents[i].Quantity} {proto.Name}");
-                var reagentIndex = _menu.IngredientsListReagents.IndexOf(reagentAdded);
-                _reagents.Add(reagentIndex, reagents[i]);
-            }
 
             _solids.Clear();
             _menu.IngredientsList.Clear();

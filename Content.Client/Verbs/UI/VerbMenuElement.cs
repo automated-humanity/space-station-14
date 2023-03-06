@@ -1,8 +1,11 @@
 using Content.Client.ContextMenu.UI;
 using Content.Shared.Verbs;
+using Robust.Client.GameObjects;
 using Robust.Client.UserInterface.Controls;
 using Robust.Client.Utility;
-using Robust.Shared.Utility;
+using Robust.Shared.GameObjects;
+using Robust.Shared.IoC;
+using Robust.Shared.Maths;
 
 namespace Content.Client.Verbs.UI
 {
@@ -10,12 +13,9 @@ namespace Content.Client.Verbs.UI
     ///     Slight extension of <see cref="ContextMenuElement"/> that uses a SpriteSpecifier for it's icon and provides
     ///     constructors that take verbs or verb categories.
     /// </summary>
-    public partial class VerbMenuElement : ContextMenuElement
+    public sealed partial class VerbMenuElement : ContextMenuElement
     {
-        public const string StyleClassVerbInteractionText = "InteractionVerb";
-        public const string StyleClassVerbActivationText = "ActivationVerb";
-        public const string StyleClassVerbAlternativeText = "AlternativeVerb";
-        public const string StyleClassVerbOtherText = "OtherVerb";
+        public const string StyleClassVerbMenuConfirmationTexture = "verbMenuConfirmationTexture";
 
         public const float VerbTooltipDelay = 0.5f;
 
@@ -24,46 +24,53 @@ namespace Content.Client.Verbs.UI
         public bool TextVisible { set => Label.Visible = value; }
 
         // Top quality variable naming
-        public Verb? Verb;
+        public readonly Verb? Verb;
 
-        public VerbType Type;
-
-        public VerbMenuElement(string? text, SpriteSpecifier? icon, VerbType verbType) : base(text)
-        {
-            Icon.AddChild(new TextureRect()
-            {
-                Texture = icon?.Frame0(),
-                Stretch = TextureRect.StretchMode.KeepAspectCentered
-            });
-
-            Type = verbType;
-
-            // Set text font style based on verb type
-            switch (verbType)
-            {
-                case VerbType.Interaction:
-                    Label.SetOnlyStyleClass(StyleClassVerbInteractionText);
-                    break;
-                case VerbType.Activation:
-                    Label.SetOnlyStyleClass(StyleClassVerbActivationText);
-                    break;
-                case VerbType.Alternative:
-                    Label.SetOnlyStyleClass(StyleClassVerbAlternativeText);
-                    break;
-                default:
-                    Label.SetOnlyStyleClass(StyleClassVerbOtherText);
-                    break;
-            }
-        }
-
-        public VerbMenuElement(Verb verb, VerbType verbType) : this(verb.Text, verb.Icon, verbType)
+        public VerbMenuElement(Verb verb) : base(verb.Text)
         {
             ToolTip = verb.Message;
             TooltipDelay = VerbTooltipDelay;
             Disabled = verb.Disabled;
             Verb = verb;
+
+            Label.SetOnlyStyleClass(verb.TextStyleClass);
+
+            if (verb.ConfirmationPopup)
+            {
+                ExpansionIndicator.SetOnlyStyleClass(StyleClassVerbMenuConfirmationTexture);
+                ExpansionIndicator.Visible = true;
+            }
+
+            var entManager = IoCManager.Resolve<IEntityManager>();
+
+            if (verb.Icon == null && verb.IconEntity != null)
+            {
+                var spriteView = new SpriteView()
+                {
+                    OverrideDirection = Direction.South,
+                    Sprite = entManager.GetComponentOrNull<SpriteComponent>(verb.IconEntity.Value)
+                };
+
+                Icon.AddChild(spriteView);
+                return;
+            }
+
+            Icon.AddChild(new TextureRect()
+            {
+                Texture = verb.Icon != null ? entManager.System<SpriteSystem>().Frame0(verb.Icon) : null,
+                Stretch = TextureRect.StretchMode.KeepAspectCentered
+            });
         }
 
-        public VerbMenuElement(VerbCategory category, VerbType verbType) : this(category.Text, category.Icon, verbType) { }
+        public VerbMenuElement(VerbCategory category, string styleClass) : base(category.Text)
+        {
+            Label.SetOnlyStyleClass(styleClass);
+
+            Icon.AddChild(new TextureRect()
+            {
+                Texture = category.Icon != null ? IoCManager.Resolve<IEntitySystemManager>().GetEntitySystem<SpriteSystem>().Frame0(category.Icon) : null,
+                Stretch = TextureRect.StretchMode.KeepAspectCentered
+            });
+        }
     }
 }

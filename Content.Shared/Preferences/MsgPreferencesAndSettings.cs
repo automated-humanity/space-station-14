@@ -1,6 +1,5 @@
-﻿using System.IO;
+using System.IO;
 using Lidgren.Network;
-using Robust.Shared.IoC;
 using Robust.Shared.Network;
 using Robust.Shared.Serialization;
 
@@ -9,16 +8,15 @@ namespace Content.Shared.Preferences
     /// <summary>
     /// The server sends this before the client joins the lobby.
     /// </summary>
-    public class MsgPreferencesAndSettings : NetMessage
+    public sealed class MsgPreferencesAndSettings : NetMessage
     {
         public override MsgGroups MsgGroup => MsgGroups.Command;
 
         public PlayerPreferences Preferences = default!;
         public GameSettings Settings = default!;
 
-        public override void ReadFromBuffer(NetIncomingMessage buffer)
+        public override void ReadFromBuffer(NetIncomingMessage buffer, IRobustSerializer serializer)
         {
-            var serializer = IoCManager.Resolve<IRobustSerializer>();
             var length = buffer.ReadVariableInt32();
             using (var stream = buffer.ReadAlignedMemory(length))
             {
@@ -32,9 +30,8 @@ namespace Content.Shared.Preferences
             }
         }
 
-        public override void WriteToBuffer(NetOutgoingMessage buffer)
+        public override void WriteToBuffer(NetOutgoingMessage buffer, IRobustSerializer serializer)
         {
-            var serializer = IoCManager.Resolve<IRobustSerializer>();
             using (var stream = new MemoryStream())
             {
                 serializer.SerializeDirect(stream, Preferences);

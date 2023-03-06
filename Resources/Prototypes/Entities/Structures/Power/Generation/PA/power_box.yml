@@ -27,8 +27,10 @@
           !type:CableDeviceNode
           nodeGroupID: HVPower
     - type: Construction
-      graph: particleAcceleratorPowerBox
+      graph: ParticleAcceleratorPowerBox
       node: completed
+    - type: GuideHelp
+      guides: [ Singularity, Power ]
 
 - type: entity
   parent: ParticleAcceleratorBase
@@ -43,6 +45,8 @@
       sprite: Structures/Power/Generation/PA/power_box.rsi
       state: box
     - type: Construction
-      graph: particleAcceleratorPowerBox
+      graph: ParticleAcceleratorPowerBox
       node: start
       defaultTarget: completed
+    - type: GuideHelp
+      guides: [ Singularity, Power ]

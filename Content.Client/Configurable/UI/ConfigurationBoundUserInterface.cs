@@ -2,15 +2,15 @@
 using System.Text.RegularExpressions;
 using Robust.Client.GameObjects;
 using Robust.Shared.GameObjects;
-using static Content.Shared.Configurable.SharedConfigurationComponent;
+using static Content.Shared.Configurable.ConfigurationComponent;
 
 namespace Content.Client.Configurable.UI
 {
-    public class ConfigurationBoundUserInterface : BoundUserInterface
+    public sealed class ConfigurationBoundUserInterface : BoundUserInterface
     {
         public Regex? Validation { get; internal set; }
 
-        public ConfigurationBoundUserInterface(ClientUserInterfaceComponent owner, object uiKey) : base(owner, uiKey)
+        public ConfigurationBoundUserInterface(ClientUserInterfaceComponent owner, Enum uiKey) : base(owner, uiKey)
         {
         }
 

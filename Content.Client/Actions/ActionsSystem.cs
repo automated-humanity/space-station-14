@@ -1,75 +1,212 @@
-using Content.Client.Construction;
-using Content.Client.DragDrop;
-using Content.Shared.Input;
+using System.IO;
+using System.Linq;
+using Content.Client.Popups;
+using Content.Shared.Actions;
+using Content.Shared.Actions.ActionTypes;
 using JetBrains.Annotations;
 using Robust.Client.GameObjects;
 using Robust.Client.Player;
-using Robust.Shared.GameObjects;
-using Robust.Shared.Input;
+using Robust.Shared.Audio;
+using Robust.Shared.ContentPack;
+using Robust.Shared.GameStates;
 using Robust.Shared.Input.Binding;
-using Robust.Shared.IoC;
+using Robust.Shared.Player;
+using Robust.Shared.Serialization.Manager;
+using Robust.Shared.Serialization.Markdown;
+using Robust.Shared.Serialization.Markdown.Mapping;
+using Robust.Shared.Serialization.Markdown.Sequence;
+using Robust.Shared.Utility;
+using YamlDotNet.RepresentationModel;
 
 namespace Content.Client.Actions
 {
     [UsedImplicitly]
-    public class ActionsSystem : EntitySystem
+    public sealed class ActionsSystem : SharedActionsSystem
     {
+        public delegate void OnActionReplaced(ActionType existing, ActionType action);
+
         [Dependency] private readonly IPlayerManager _playerManager = default!;
+        [Dependency] private readonly IResourceManager _resources = default!;
+        [Dependency] private readonly ISerializationManager _serialization = default!;
+
+        [Dependency] private readonly PopupSystem _popupSystem = default!;
+
+        public event Action<ActionType>? ActionAdded;
+        public event Action<ActionType>? ActionRemoved;
+        public event OnActionReplaced? ActionReplaced;
+        public event Action? ActionsUpdated;
+        public event Action<ActionsComponent>? LinkActions;
+        public event Action? UnlinkActions;
+        public event Action? ClearAssignments;
+        public event Action<List<SlotAssignment>>? AssignSlot;
+
+        public ActionsComponent? PlayerActions { get; private set; }
 
         public override void Initialize()
         {
             base.Initialize();
+            SubscribeLocalEvent<ActionsComponent, PlayerAttachedEvent>(OnPlayerAttached);
+            SubscribeLocalEvent<ActionsComponent, PlayerDetachedEvent>(OnPlayerDetached);
+            SubscribeLocalEvent<ActionsComponent, ComponentHandleState>(HandleComponentState);
+        }
 
-            // set up hotkeys for hotbar
-            CommandBinds.Builder
-                .Bind(ContentKeyFunctions.OpenActionsMenu,
-                    InputCmdHandler.FromDelegate(_ => ToggleActionsMenu()))
-                .Bind(ContentKeyFunctions.Hotbar1,
-                    HandleHotbarKeybind(0))
-                .Bind(ContentKeyFunctions.Hotbar2,
-                    HandleHotbarKeybind(1))
-                .Bind(ContentKeyFunctions.Hotbar3,
-                    HandleHotbarKeybind(2))
-                .Bind(ContentKeyFunctions.Hotbar4,
-                    HandleHotbarKeybind(3))
-                .Bind(ContentKeyFunctions.Hotbar5,
-                    HandleHotbarKeybind(4))
-                .Bind(ContentKeyFunctions.Hotbar6,
-                    HandleHotbarKeybind(5))
-                .Bind(ContentKeyFunctions.Hotbar7,
-                    HandleHotbarKeybind(6))
-                .Bind(ContentKeyFunctions.Hotbar8,
-                    HandleHotbarKeybind(7))
-                .Bind(ContentKeyFunctions.Hotbar9,
-                    HandleHotbarKeybind(8))
-                .Bind(ContentKeyFunctions.Hotbar0,
-                    HandleHotbarKeybind(9))
-                .Bind(ContentKeyFunctions.Loadout1,
-                    HandleChangeHotbarKeybind(0))
-                .Bind(ContentKeyFunctions.Loadout2,
-                    HandleChangeHotbarKeybind(1))
-                .Bind(ContentKeyFunctions.Loadout3,
-                    HandleChangeHotbarKeybind(2))
-                .Bind(ContentKeyFunctions.Loadout4,
-                    HandleChangeHotbarKeybind(3))
-                .Bind(ContentKeyFunctions.Loadout5,
-                    HandleChangeHotbarKeybind(4))
-                .Bind(ContentKeyFunctions.Loadout6,
-                    HandleChangeHotbarKeybind(5))
-                .Bind(ContentKeyFunctions.Loadout7,
-                    HandleChangeHotbarKeybind(6))
-                .Bind(ContentKeyFunctions.Loadout8,
-                    HandleChangeHotbarKeybind(7))
-                .Bind(ContentKeyFunctions.Loadout9,
-                    HandleChangeHotbarKeybind(8))
-                // when selecting a target, we intercept clicks in the game world, treating them as our target selection. We want to
-                // take priority before any other systems handle the click.
-                .BindBefore(EngineKeyFunctions.Use, new PointerInputCmdHandler(TargetingOnUse),
-                    typeof(ConstructionSystem), typeof(DragDropSystem))
-                .Register<ActionsSystem>();
+        private void HandleComponentState(EntityUid uid, ActionsComponent component, ref ComponentHandleState args)
+        {
+            if (args.Current is not ActionsComponentState state)
+                return;
 
-            SubscribeLocalEvent<ClientActionsComponent, PlayerAttachedEvent>((_, component, _) => component.PlayerAttached());
-            SubscribeLocalEvent<ClientActionsComponent, PlayerDetachedEvent>((_, component, _) => component.PlayerDetached());
+            var serverActions = new SortedSet<ActionType>(state.Actions);
+            var removed = new List<ActionType>();
+
+            foreach (var act in component.Actions.ToList())
+            {
+                if (act.ClientExclusive)
+                    continue;
+
+                if (!serverActions.TryGetValue(act, out var serverAct))
+                {
+                    component.Actions.Remove(act);
+                    if (act.AutoRemove)
+                        removed.Add(act);
+
+                    continue;
+                }
+
+                act.CopyFrom(serverAct);
+                serverActions.Remove(serverAct);
+            }
+
+            var added = new List<ActionType>();
+
+            // Anything that remains is a new action
+            foreach (var newAct in serverActions)
+            {
+                // We create a new action, not just sorting a reference to the state's action.
+                var action = (ActionType) newAct.Clone();
+                component.Actions.Add(action);
+                added.Add(action);
+            }
+
+            if (_playerManager.LocalPlayer?.ControlledEntity != uid)
+                return;
+
+            foreach (var action in removed)
+            {
+                ActionRemoved?.Invoke(action);
+            }
+
+            foreach (var action in added)
+            {
+                ActionAdded?.Invoke(action);
+            }
+
+            ActionsUpdated?.Invoke();
+        }
+
+        protected override void AddActionInternal(ActionsComponent comp, ActionType action)
+        {
+            // Sometimes the client receives actions from the server, before predicting that newly added components will add
+            // their own shared actions. Just in case those systems ever decided to directly access action properties (e.g.,
+            // action.Toggled), we will remove duplicates:
+            if (comp.Actions.TryGetValue(action, out var existing))
+            {
+                comp.Actions.Remove(existing);
+                ActionReplaced?.Invoke(existing, action);
+            }
+
+            comp.Actions.Add(action);
+        }
+
+        public override void AddAction(EntityUid uid, ActionType action, EntityUid? provider, ActionsComponent? comp = null, bool dirty = true)
+        {
+            if (!Resolve(uid, ref comp, false))
+                return;
+
+            base.AddAction(uid, action, provider, comp, dirty);
+
+            if (uid == _playerManager.LocalPlayer?.ControlledEntity)
+                ActionAdded?.Invoke(action);
+        }
+
+        public override void RemoveActions(EntityUid uid, IEnumerable<ActionType> actions, ActionsComponent? comp = null, bool dirty = true)
+        {
+            if (uid != _playerManager.LocalPlayer?.ControlledEntity)
+                return;
+
+            if (!Resolve(uid, ref comp, false))
+                return;
+
+            var actionList = actions.ToList();
+            base.RemoveActions(uid, actionList, comp, dirty);
+
+            foreach (var act in actionList)
+            {
+                if (act.AutoRemove)
+                    ActionRemoved?.Invoke(act);
+            }
+        }
+
+        /// <summary>
+        ///     Execute convenience functionality for actions (pop-ups, sound, speech)
+        /// </summary>
+        protected override bool PerformBasicActions(EntityUid user, ActionType action, bool predicted)
+        {
+            var performedAction = action.Sound != null
+                                  || !string.IsNullOrWhiteSpace(action.UserPopup)
+                                  || !string.IsNullOrWhiteSpace(action.Popup);
+
+            if (!GameTiming.IsFirstTimePredicted)
+                return performedAction;
+
+            if (!string.IsNullOrWhiteSpace(action.UserPopup))
+            {
+                var msg = (!action.Toggled || string.IsNullOrWhiteSpace(action.PopupToggleSuffix))
+                    ? Loc.GetString(action.UserPopup)
+                    : Loc.GetString(action.UserPopup + action.PopupToggleSuffix);
+
+                _popupSystem.PopupEntity(msg, user);
+            }
+            else if (!string.IsNullOrWhiteSpace(action.Popup))
+            {
+                var msg = (!action.Toggled || string.IsNullOrWhiteSpace(action.PopupToggleSuffix))
+                    ? Loc.GetString(action.Popup)
+                    : Loc.GetString(action.Popup + action.PopupToggleSuffix);
+
+                _popupSystem.PopupEntity(msg, user);
+            }
+
+            if (action.Sound != null)
+                SoundSystem.Play(action.Sound.GetSound(), Filter.Local(), user, action.AudioParams);
+
+            return performedAction;
+        }
+
+        private void OnPlayerAttached(EntityUid uid, ActionsComponent component, PlayerAttachedEvent args)
+        {
+            LinkAllActions(component);
+        }
+
+        private void OnPlayerDetached(EntityUid uid, ActionsComponent component, PlayerDetachedEvent? args = null)
+        {
+            UnlinkAllActions();
+        }
+
+        public void UnlinkAllActions()
+        {
+            PlayerActions = null;
+            UnlinkActions?.Invoke();
+        }
+
+        public void LinkAllActions(ActionsComponent? actions = null)
+        {
+             var player = _playerManager.LocalPlayer?.ControlledEntity;
+             if (player == null || !Resolve(player.Value, ref actions))
+             {
+                 return;
+             }
+
+             LinkActions?.Invoke(actions);
+             PlayerActions = actions;
         }
 
         public override void Shutdown()
@@ -78,48 +215,113 @@ namespace Content.Client.Actions
             CommandBinds.Unregister<ActionsSystem>();
         }
 
-        private PointerInputCmdHandler HandleHotbarKeybind(byte slot)
+        public void TriggerAction(ActionType? action)
         {
-            // delegate to the ActionsUI, simulating a click on it
-            return new((in PointerInputCmdHandler.PointerInputCmdArgs args) =>
+            if (PlayerActions == null || action == null || _playerManager.LocalPlayer?.ControlledEntity is not { Valid: true } user)
+                return;
+
+            if (action.Provider != null && Deleted(action.Provider))
+                return;
+
+            if (action is not InstantAction instantAction)
+            {
+                return;
+            }
+
+            if (action.ClientExclusive)
+            {
+                if (instantAction.Event != null)
+                    instantAction.Event.Performer = user;
+
+                PerformAction(user, PlayerActions, instantAction, instantAction.Event, GameTiming.CurTime);
+            }
+            else
+            {
+                var request = new RequestPerformActionEvent(instantAction);
+                EntityManager.RaisePredictiveEvent(request);
+            }
+        }
+
+        /*public void SaveActionAssignments(string path)
+        {
+
+            // Currently only tested with temporary innate actions (i.e., mapping actions). No guarantee it works with
+            // other actions. If its meant to be used for full game state saving/loading, the entity that provides
+            // actions needs to keep the same uid.
+
+            var sequence = new SequenceDataNode();
+
+            foreach (var (action, assigns) in Assignments.Assignments)
+            {
+                var slot = new MappingDataNode();
+                slot.Add("action", _serializationManager.WriteValue(action));
+                slot.Add("assignments", _serializationManager.WriteValue(assigns));
+                sequence.Add(slot);
+            }
+
+            using var writer = _resourceManager.UserData.OpenWriteText(new ResourcePath(path).ToRootedPath());
+            var stream = new YamlStream { new(sequence.ToSequenceNode()) };
+            stream.Save(new YamlMappingFix(new Emitter(writer)), false);
+        }*/
+
+        /// <summary>
+        ///     Load actions and their toolbar assignments from a file.
+        /// </summary>
+        public void LoadActionAssignments(string path, bool userData)
+        {
+            if (PlayerActions == null)
+                return;
+
+            var file = new ResourcePath(path).ToRootedPath();
+            TextReader reader = userData
+                ? _resources.UserData.OpenText(file)
+                : _resources.ContentFileReadText(file);
+
+            var yamlStream = new YamlStream();
+            yamlStream.Load(reader);
+
+            if (yamlStream.Documents[0].RootNode.ToDataNode() is not SequenceDataNode sequence)
+                return;
+
+            ClearAssignments?.Invoke();
+
+            var assignments = new List<SlotAssignment>();
+
+            foreach (var entry in sequence.Sequence)
+            {
+                if (entry is not MappingDataNode map)
+                    continue;
+
+                if (!map.TryGet("action", out var actionNode))
+                    continue;
+
+                var action = _serialization.Read<ActionType>(actionNode, notNullableOverride: true);
+
+                if (PlayerActions.Actions.TryGetValue(action, out var existingAction))
                 {
-                    var playerEntity = _playerManager.LocalPlayer?.ControlledEntity;
-                    if (playerEntity == null ||
-                        !EntityManager.TryGetComponent<ClientActionsComponent?>(playerEntity.Value, out var actionsComponent)) return false;
-
-                    actionsComponent.HandleHotbarKeybind(slot, args);
-                    return true;
-                }, false);
-        }
-
-        private PointerInputCmdHandler HandleChangeHotbarKeybind(byte hotbar)
-        {
-            // delegate to the ActionsUI, simulating a click on it
-            return new((in PointerInputCmdHandler.PointerInputCmdArgs args) =>
+                    existingAction.CopyFrom(action);
+                    action = existingAction;
+                }
+                else
                 {
-                    var playerEntity = _playerManager.LocalPlayer?.ControlledEntity;
-                    if (!EntityManager.TryGetComponent<ClientActionsComponent?>(playerEntity, out var actionsComponent)) return false;
+                    PlayerActions.Actions.Add(action);
+                }
 
-                    actionsComponent.HandleChangeHotbarKeybind(hotbar, args);
-                    return true;
-                },
-                false);
+                if (!map.TryGet("assignments", out var assignmentNode))
+                    continue;
+
+                var nodeAssignments = _serialization.Read<List<(byte Hotbar, byte Slot)>>(assignmentNode, notNullableOverride: true);
+
+                foreach (var index in nodeAssignments)
+                {
+                    var assignment = new SlotAssignment(index.Hotbar, index.Slot, action);
+                    assignments.Add(assignment);
+                }
+            }
+
+            AssignSlot?.Invoke(assignments);
         }
 
-        private bool TargetingOnUse(in PointerInputCmdHandler.PointerInputCmdArgs args)
-        {
-            var playerEntity = _playerManager.LocalPlayer?.ControlledEntity;
-            if (!EntityManager.TryGetComponent<ClientActionsComponent?>(playerEntity, out var actionsComponent)) return false;
-
-            return actionsComponent.TargetingOnUse(args);
-        }
-
-        private void ToggleActionsMenu()
-        {
-            var playerEntity = _playerManager.LocalPlayer?.ControlledEntity;
-            if (!EntityManager.TryGetComponent<ClientActionsComponent?>(playerEntity, out var actionsComponent)) return;
-
-            actionsComponent.ToggleActionsMenu();
-        }
+        public record struct SlotAssignment(byte Hotbar, byte Slot, ActionType Action);
     }
 }

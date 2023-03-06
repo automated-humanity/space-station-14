@@ -8,7 +8,7 @@ using Robust.Shared.ViewVariables;
 namespace Content.Client.Power.APC
 {
     [UsedImplicitly]
-    public class ApcBoundUserInterface : BoundUserInterface
+    public sealed class ApcBoundUserInterface : BoundUserInterface
     {
         [ViewVariables] private ApcMenu? _menu;
 
@@ -21,7 +21,7 @@ namespace Content.Client.Power.APC
             _menu.OpenCentered();
         }
 
-        public ApcBoundUserInterface(ClientUserInterfaceComponent owner, object uiKey) : base(owner, uiKey)
+        public ApcBoundUserInterface(ClientUserInterfaceComponent owner, Enum uiKey) : base(owner, uiKey)
         {
         }
 

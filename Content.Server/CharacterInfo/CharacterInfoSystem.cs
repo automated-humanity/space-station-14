@@ -1,14 +1,12 @@
-﻿using System.Collections.Generic;
-using Content.Server.Mind.Components;
+﻿using Content.Server.Mind.Components;
 using Content.Server.Roles;
 using Content.Shared.CharacterInfo;
 using Content.Shared.Objectives;
-using Robust.Shared.GameObjects;
 using Robust.Shared.Player;
 
 namespace Content.Server.CharacterInfo;
 
-public class CharacterInfoSystem : EntitySystem
+public sealed class CharacterInfoSystem : EntitySystem
 {
     public override void Initialize()
     {
@@ -27,6 +25,7 @@ public class CharacterInfoSystem : EntitySystem
 
         var conditions = new Dictionary<string, List<ConditionInfo>>();
         var jobTitle = "No Profession";
+        var briefing = "!!ERROR: No Briefing!!"; //should never show on the UI unless there's a bug
         if (EntityManager.TryGetComponent(entity, out MindComponent? mindComponent) && mindComponent.Mind != null)
         {
             var mind = mindComponent.Mind;
@@ -51,9 +50,11 @@ public class CharacterInfoSystem : EntitySystem
                 jobTitle = role.Name;
                 break;
             }
+
+            // Get briefing
+            briefing = mind.Briefing;
         }
 
-        RaiseNetworkEvent(new CharacterInfoEvent(entity, jobTitle, conditions),
-            Filter.SinglePlayer(args.SenderSession));
+        RaiseNetworkEvent(new CharacterInfoEvent(entity, jobTitle, conditions, briefing), args.SenderSession);
     }
 }

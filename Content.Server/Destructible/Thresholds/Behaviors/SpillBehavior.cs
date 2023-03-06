@@ -2,14 +2,12 @@ using Content.Server.Chemistry.EntitySystems;
 using Content.Server.Fluids.Components;
 using Content.Server.Fluids.EntitySystems;
 using JetBrains.Annotations;
-using Robust.Shared.GameObjects;
-using Robust.Shared.Serialization.Manager.Attributes;
 
 namespace Content.Server.Destructible.Thresholds.Behaviors
 {
     [UsedImplicitly]
     [DataDefinition]
-    public class SpillBehavior : IThresholdBehavior
+    public sealed class SpillBehavior : IThresholdBehavior
     {
         [DataField("solution")]
         public string? Solution;
@@ -21,7 +19,8 @@ namespace Content.Server.Destructible.Thresholds.Behaviors
         /// </summary>
         /// <param name="owner">Entity on which behavior is executed</param>
         /// <param name="system">system calling the behavior</param>
-        public void Execute(EntityUid owner, DestructibleSystem system)
+        /// <param name="cause"></param>
+        public void Execute(EntityUid owner, DestructibleSystem system, EntityUid? cause = null)
         {
             var solutionContainerSystem = EntitySystem.Get<SolutionContainerSystem>();
             var spillableSystem = EntitySystem.Get<SpillableSystem>();
@@ -37,7 +36,7 @@ namespace Content.Server.Destructible.Thresholds.Behaviors
             else if (Solution != null &&
                      solutionContainerSystem.TryGetSolution(owner, Solution, out var behaviorSolution))
             {
-                spillableSystem.SpillAt(behaviorSolution, coordinates, "PuddleSmear", false);
+                spillableSystem.SpillAt(behaviorSolution, coordinates, "PuddleSmear");
             }
         }
     }

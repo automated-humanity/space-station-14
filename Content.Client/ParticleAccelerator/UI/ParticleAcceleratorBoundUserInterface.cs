@@ -4,11 +4,11 @@ using Robust.Shared.GameObjects;
 
 namespace Content.Client.ParticleAccelerator.UI
 {
-    public class ParticleAcceleratorBoundUserInterface : BoundUserInterface
+    public sealed class ParticleAcceleratorBoundUserInterface : BoundUserInterface
     {
         private ParticleAcceleratorControlMenu? _menu;
 
-        public ParticleAcceleratorBoundUserInterface(ClientUserInterfaceComponent owner, object uiKey) : base(owner, uiKey)
+        public ParticleAcceleratorBoundUserInterface(ClientUserInterfaceComponent owner, Enum uiKey) : base(owner, uiKey)
         {
         }
 
@@ -45,7 +45,8 @@ namespace Content.Client.ParticleAccelerator.UI
         {
             base.Dispose(disposing);
 
-            _menu?.Close();
+            _menu?.Dispose();
+            _menu = null;
         }
     }
 }

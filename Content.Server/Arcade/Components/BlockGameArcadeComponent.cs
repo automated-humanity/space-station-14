@@ -1,65 +1,28 @@
-using System;
-using System.Collections.Generic;
 using System.Linq;
 using Content.Server.Power.Components;
 using Content.Server.UserInterface;
-using Content.Shared.ActionBlocker;
 using Content.Shared.Arcade;
-using Content.Shared.Interaction;
 using Robust.Server.GameObjects;
 using Robust.Server.Player;
-using Robust.Shared.GameObjects;
-using Robust.Shared.IoC;
-using Robust.Shared.Maths;
 using Robust.Shared.Random;
 
 namespace Content.Server.Arcade.Components
 {
     [RegisterComponent]
-    [ComponentReference(typeof(IActivate))]
-    public class BlockGameArcadeComponent : Component, IActivate
+    public sealed class BlockGameArcadeComponent : Component
     {
         [Dependency] private readonly IRobustRandom _random = default!;
+        [Dependency] private readonly IEntityManager _entityManager = default!;
 
-        public override string Name => "BlockGameArcade";
-
-        [ComponentDependency] private readonly ApcPowerReceiverComponent? _powerReceiverComponent = default!;
-
-        private bool Powered => _powerReceiverComponent?.Powered ?? false;
-        private BoundUserInterface? UserInterface => Owner.GetUIOrNull(BlockGameUiKey.Key);
+        public bool Powered => _entityManager.TryGetComponent<ApcPowerReceiverComponent>(Owner, out var powerReceiverComponent) && powerReceiverComponent.Powered;
+        public BoundUserInterface? UserInterface => Owner.GetUIOrNull(BlockGameUiKey.Key);
 
         private BlockGame? _game;
 
         private IPlayerSession? _player;
         private readonly List<IPlayerSession> _spectators = new();
 
-        [Obsolete("Component Messages are deprecated, use Entity Events instead.")]
-        public override void HandleMessage(ComponentMessage message, IComponent? component)
-        {
-#pragma warning disable 618
-            base.HandleMessage(message, component);
-#pragma warning restore 618
-            switch (message)
-            {
-                case PowerChangedMessage powerChanged:
-                    OnPowerStateChanged(powerChanged);
-                    break;
-            }
-        }
-
-        void IActivate.Activate(ActivateEventArgs eventArgs)
-        {
-            if(!Powered || !IoCManager.Resolve<IEntityManager>().TryGetComponent(eventArgs.User, out ActorComponent? actor))
-                return;
-
-            if(!EntitySystem.Get<ActionBlockerSystem>().CanInteract(eventArgs.User))
-                return;
-
-            UserInterface?.Toggle(actor.PlayerSession);
-            RegisterPlayerSession(actor.PlayerSession);
-        }
-
-        private void RegisterPlayerSession(IPlayerSession session)
+        public void RegisterPlayerSession(IPlayerSession session)
         {
             if (_player == null) _player = session;
             else _spectators.Add(session);
@@ -85,7 +48,7 @@ namespace Content.Server.Arcade.Components
             UpdatePlayerStatus(temp);
         }
 
-        private void UnRegisterPlayerSession(IPlayerSession session)
+        public void UnRegisterPlayerSession(IPlayerSession session)
         {
             if (_player == session)
             {
@@ -109,12 +72,11 @@ namespace Content.Server.Arcade.Components
             if (UserInterface != null)
             {
                 UserInterface.OnReceiveMessage += UserInterfaceOnOnReceiveMessage;
-                UserInterface.OnClosed += UnRegisterPlayerSession;
             }
             _game = new BlockGame(this);
         }
 
-        private void OnPowerStateChanged(PowerChangedMessage e)
+        public void OnPowerStateChanged(PowerChangedEvent e)
         {
             if (e.Powered) return;
 
@@ -129,13 +91,6 @@ namespace Content.Server.Arcade.Components
             {
                 case BlockGameMessages.BlockGamePlayerActionMessage playerActionMessage:
                     if (obj.Session != _player) break;
-
-                    // TODO: Should this check if the Owner can interact...?
-                    if (!EntitySystem.Get<ActionBlockerSystem>().CanInteract(Owner))
-                    {
-                        DeactivePlayer(obj.Session);
-                        break;
-                    }
 
                     if (playerActionMessage.PlayerAction == BlockGamePlayerAction.NewGame)
                     {
@@ -156,7 +111,7 @@ namespace Content.Server.Arcade.Components
             _game?.GameTick(frameTime);
         }
 
-        private class BlockGame
+        private sealed class BlockGame
         {
             //note: field is 10(0 -> 9) wide and 20(0 -> 19) high
 
@@ -243,7 +198,7 @@ namespace Content.Server.Arcade.Components
             }
             private int _internalPoints;
 
-            private BlockGameSystem.HighScorePlacement? _highScorePlacement = null;
+            private ArcadeSystem.HighScorePlacement? _highScorePlacement = null;
 
             private void SendPointsUpdate()
             {
@@ -302,13 +257,13 @@ namespace Content.Server.Arcade.Components
 
             private void SendHighscoreUpdate()
             {
-                var entitySystem = EntitySystem.Get<BlockGameSystem>();
+                var entitySystem = EntitySystem.Get<ArcadeSystem>();
                 _component.UserInterface?.SendMessage(new BlockGameMessages.BlockGameHighScoreUpdateMessage(entitySystem.GetLocalHighscores(), entitySystem.GetGlobalHighscores()));
             }
 
             private void SendHighscoreUpdate(IPlayerSession session)
             {
-                var entitySystem = EntitySystem.Get<BlockGameSystem>();
+                var entitySystem = EntitySystem.Get<ArcadeSystem>();
                 _component.UserInterface?.SendMessage(new BlockGameMessages.BlockGameHighScoreUpdateMessage(entitySystem.GetLocalHighscores(), entitySystem.GetGlobalHighscores()), session);
             }
 
@@ -399,7 +354,8 @@ namespace Content.Server.Arcade.Components
             {
                 _accumulatedFieldFrameTime += frameTime;
 
-                var checkTime = Speed;
+                // Speed goes negative sometimes. uhhhh max() it I guess!!!
+                var checkTime = Math.Max(0.03f, Speed);
 
                 while (_accumulatedFieldFrameTime >= checkTime)
                 {
@@ -666,7 +622,7 @@ namespace Content.Server.Arcade.Components
 
                 if (_component._player?.AttachedEntity is {Valid: true} playerEntity)
                 {
-                    var blockGameSystem = EntitySystem.Get<BlockGameSystem>();
+                    var blockGameSystem = EntitySystem.Get<ArcadeSystem>();
 
                     _highScorePlacement = blockGameSystem.RegisterHighScore(IoCManager.Resolve<IEntityManager>().GetComponent<MetaDataComponent>(playerEntity).EntityName, Points);
                     SendHighscoreUpdate();

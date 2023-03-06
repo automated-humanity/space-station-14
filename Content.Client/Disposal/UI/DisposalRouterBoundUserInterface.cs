@@ -9,11 +9,11 @@ namespace Content.Client.Disposal.UI
     /// Initializes a <see cref="DisposalRouterWindow"/> and updates it when new server messages are received.
     /// </summary>
     [UsedImplicitly]
-    public class DisposalRouterBoundUserInterface : BoundUserInterface
+    public sealed class DisposalRouterBoundUserInterface : BoundUserInterface
     {
         private DisposalRouterWindow? _window;
 
-        public DisposalRouterBoundUserInterface(ClientUserInterfaceComponent owner, object uiKey) : base(owner, uiKey)
+        public DisposalRouterBoundUserInterface(ClientUserInterfaceComponent owner, Enum uiKey) : base(owner, uiKey)
         {
         }
 

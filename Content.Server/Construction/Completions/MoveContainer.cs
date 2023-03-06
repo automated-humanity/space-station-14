@@ -1,20 +1,17 @@
 using System.Linq;
-using System.Threading.Tasks;
 using Content.Shared.Construction;
 using JetBrains.Annotations;
 using Robust.Server.Containers;
 using Robust.Shared.Containers;
-using Robust.Shared.GameObjects;
-using Robust.Shared.Serialization.Manager.Attributes;
 
 namespace Content.Server.Construction.Completions
 {
     [UsedImplicitly]
     [DataDefinition]
-    public class MoveContainer : IGraphAction
+    public sealed class MoveContainer : IGraphAction
     {
-        [DataField("from")] public string? FromContainer { get; } = null;
-        [DataField("to")] public string? ToContainer { get; } = null;
+        [DataField("from")] public string? FromContainer { get; }
+        [DataField("to")] public string? ToContainer { get; }
 
         public void PerformAction(EntityUid uid, EntityUid? userUid, IEntityManager entityManager)
         {

@@ -1,50 +1,42 @@
-using System.Threading.Tasks;
-using Content.Server.Power.Components;
-using Content.Shared.Interaction;
-using Content.Shared.Popups;
-using Robust.Shared.GameObjects;
-using Robust.Shared.IoC;
-using Robust.Shared.Localization;
-using Robust.Shared.Random;
+using Content.Server.Botany.Systems;
+using Content.Server.Construction;
+using Content.Shared.Construction.Prototypes;
+using Robust.Shared.Serialization.TypeSerializers.Implementations.Custom.Prototype;
 
-namespace Content.Server.Botany.Components
+namespace Content.Server.Botany.Components;
+
+[RegisterComponent]
+[Access(typeof(SeedExtractorSystem))]
+public sealed class SeedExtractorComponent : Component
 {
-    [RegisterComponent]
-    public class SeedExtractorComponent : Component, IInteractUsing
-    {
-        [ComponentDependency] private readonly ApcPowerReceiverComponent? _powerReceiver = default!;
+    /// <summary>
+    /// The minimum amount of seed packets dropped with no machine upgrades.
+    /// </summary>
+    [DataField("baseMinSeeds"), ViewVariables(VVAccess.ReadWrite)]
+    public int BaseMinSeeds = 1;
 
-        [Dependency] private readonly IEntityManager _entMan = default!;
-        [Dependency] private readonly IRobustRandom _random = default!;
+    /// <summary>
+    /// The maximum amount of seed packets dropped with no machine upgrades.
+    /// </summary>
+    [DataField("baseMaxSeeds"), ViewVariables(VVAccess.ReadWrite)]
+    public int BaseMaxSeeds = 3;
 
-        public override string Name => "SeedExtractor";
+    /// <summary>
+    /// Modifier to the amount of seeds outputted, set on <see cref="RefreshPartsEvent"/>.
+    /// </summary>
+    [ViewVariables(VVAccess.ReadWrite)]
+    public float SeedAmountMultiplier;
 
-        // TODO: Upgradeable machines.
-        private int _minSeeds = 1;
-        private int _maxSeeds = 4;
+    /// <summary>
+    /// Machine part whose rating modifies the amount of seed packets dropped.
+    /// </summary>
+    [DataField("machinePartYieldAmount", customTypeSerializer: typeof(PrototypeIdSerializer<MachinePartPrototype>))]
+    public string MachinePartSeedAmount = "Manipulator";
 
-        async Task<bool> IInteractUsing.InteractUsing(InteractUsingEventArgs eventArgs)
-        {
-            if (!_powerReceiver?.Powered ?? false)
-                return false;
-
-            if (_entMan.TryGetComponent(eventArgs.Using, out ProduceComponent? produce) && produce.Seed != null)
-            {
-                eventArgs.User.PopupMessageCursor(Loc.GetString("seed-extractor-component-interact-message",("name", Name: _entMan.GetComponent<MetaDataComponent>(eventArgs.Using).EntityName)));
-
-                _entMan.QueueDeleteEntity(eventArgs.Using);
-
-                var random = _random.Next(_minSeeds, _maxSeeds);
-
-                for (var i = 0; i < random; i++)
-                {
-                    produce.Seed.SpawnSeedPacket(_entMan.GetComponent<TransformComponent>(Owner).Coordinates, _entMan);
-                }
-
-                return true;
-            }
-
-            return false;
-        }
-    }
+    /// <summary>
+    /// How much the machine part quality affects the amount of seeds outputted.
+    /// Going up a tier will multiply the seed output by this amount.
+    /// </summary>
+    [DataField("partRatingSeedAmountMultiplier")]
+    public float PartRatingSeedAmountMultiplier = 1.5f;
 }

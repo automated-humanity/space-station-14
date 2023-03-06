@@ -1,12 +1,10 @@
-﻿using System;
-using Content.Server.Mind.Commands;
+﻿using Content.Server.Mind.Commands;
 using Content.Server.Mind.Components;
 using JetBrains.Annotations;
 using Robust.Server.Player;
-using Robust.Shared.GameObjects;
-using Robust.Shared.IoC;
-using Robust.Shared.Serialization.Manager.Attributes;
-using Robust.Shared.ViewVariables;
+using Robust.Shared.Prototypes;
+using Robust.Shared.Serialization.TypeSerializers.Implementations.Custom.Prototype;
+using Content.Server.Ghost.Roles.Events;
 
 namespace Content.Server.Ghost.Roles.Components
 {
@@ -14,11 +12,9 @@ namespace Content.Server.Ghost.Roles.Components
     ///     Allows a ghost to take this role, spawning a new entity.
     /// </summary>
     [RegisterComponent, ComponentReference(typeof(GhostRoleComponent))]
-    public class GhostRoleMobSpawnerComponent : GhostRoleComponent
+    public sealed class GhostRoleMobSpawnerComponent : GhostRoleComponent
     {
         [Dependency] private readonly IEntityManager _entMan = default!;
-
-        public override string Name => "GhostRoleMobSpawner";
 
         [ViewVariables(VVAccess.ReadWrite)] [DataField("deleteOnSpawn")]
         private bool _deleteOnSpawn = true;
@@ -31,7 +27,7 @@ namespace Content.Server.Ghost.Roles.Components
 
         [CanBeNull]
         [ViewVariables(VVAccess.ReadWrite)]
-        [DataField("prototype")]
+        [DataField("prototype", customTypeSerializer: typeof(PrototypeIdSerializer<EntityPrototype>))]
         public string? Prototype { get; private set; }
 
         public override bool Take(IPlayerSession session)
@@ -43,9 +39,14 @@ namespace Content.Server.Ghost.Roles.Components
                 throw new NullReferenceException("Prototype string cannot be null or empty!");
 
             var mob = _entMan.SpawnEntity(Prototype, _entMan.GetComponent<TransformComponent>(Owner).Coordinates);
+            var xform = _entMan.GetComponent<TransformComponent>(mob);
+            xform.AttachToGridOrMap();
+
+            var spawnedEvent = new GhostRoleSpawnerUsedEvent(Owner, mob);
+            _entMan.EventBus.RaiseLocalEvent(mob, spawnedEvent, false);
 
             if (MakeSentient)
-                MakeSentientCommand.MakeSentient(mob, _entMan);
+                MakeSentientCommand.MakeSentient(mob, _entMan, AllowMovement, AllowSpeech);
 
             mob.EnsureComponent<MindComponent>();
 
@@ -58,7 +59,7 @@ namespace Content.Server.Ghost.Roles.Components
             Taken = true;
 
             if (_deleteOnSpawn)
-                _entMan.DeleteEntity(Owner);
+                _entMan.QueueDeleteEntity(Owner);
 
             return true;
         }

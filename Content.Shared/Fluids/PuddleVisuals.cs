@@ -1,5 +1,4 @@
-﻿using System;
-using Robust.Shared.Serialization;
+﻿using Robust.Shared.Serialization;
 
 namespace Content.Shared.Fluids
 {
@@ -7,6 +6,8 @@ namespace Content.Shared.Fluids
     public enum PuddleVisuals : byte
     {
         VolumeScale,
-        SolutionColor
+        CurrentVolume,
+        SolutionColor,
+        IsEvaporatingVisual
     }
 }

@@ -1,10 +1,7 @@
-﻿using Content.Server.Chemistry.EntitySystems;
+using Content.Server.Chemistry.EntitySystems;
 using Content.Server.Fluids.Components;
 using Content.Shared.FixedPoint;
 using JetBrains.Annotations;
-using Robust.Shared.GameObjects;
-using Robust.Shared.IoC;
-using Robust.Shared.Utility;
 
 namespace Content.Server.Fluids.EntitySystems
 {
@@ -16,7 +13,6 @@ namespace Content.Server.Fluids.EntitySystems
         public override void Update(float frameTime)
         {
             base.Update(frameTime);
-            var queueDelete = new RemQueue<EvaporationComponent>();
             foreach (var evaporationComponent in EntityManager.EntityQuery<EvaporationComponent>())
             {
                 var uid = evaporationComponent.Owner;
@@ -25,7 +21,7 @@ namespace Content.Server.Fluids.EntitySystems
                 if (!_solutionContainerSystem.TryGetSolution(uid, evaporationComponent.SolutionName, out var solution))
                 {
                     // If no solution, delete the entity
-                    queueDelete.Add(evaporationComponent);
+                    EntityManager.QueueDeleteEntity(uid);
                     continue;
                 }
 
@@ -34,25 +30,31 @@ namespace Content.Server.Fluids.EntitySystems
 
                 evaporationComponent.Accumulator -= evaporationComponent.EvaporateTime;
 
-
-                _solutionContainerSystem.SplitSolution(uid, solution,
-                    FixedPoint2.Min(FixedPoint2.New(1), solution.CurrentVolume));
-
-                if (solution.CurrentVolume == 0)
+                if (evaporationComponent.EvaporationToggle)
                 {
-                    EntityManager.QueueDeleteEntity(uid);
+                    _solutionContainerSystem.SplitSolution(uid, solution,
+                        FixedPoint2.Min(FixedPoint2.New(1), solution.Volume)); // removes 1 unit, or solution current volume, whichever is lower.
                 }
-                else if (solution.CurrentVolume <= evaporationComponent.LowerLimit
-                         || solution.CurrentVolume >= evaporationComponent.UpperLimit)
-                {
-                    queueDelete.Add(evaporationComponent);
-                }
-            }
 
-            foreach (var evaporationComponent in queueDelete)
-            {
-                EntityManager.RemoveComponent(evaporationComponent.Owner, evaporationComponent);
+                evaporationComponent.EvaporationToggle =
+                    solution.Volume > evaporationComponent.LowerLimit
+                    && solution.Volume < evaporationComponent.UpperLimit;
             }
+        }
+
+        /// <summary>
+        ///  Copy constructor to copy initial fields from source to destination.
+        /// </summary>
+        /// <param name="destUid">Entity to which we copy <paramref name="srcEvaporation"/> properties</param>
+        /// <param name="srcEvaporation">Component that contains relevant properties</param>
+        public void CopyConstruct(EntityUid destUid, EvaporationComponent srcEvaporation)
+        {
+            var destEvaporation = EntityManager.EnsureComponent<EvaporationComponent>(destUid);
+            destEvaporation.EvaporateTime = srcEvaporation.EvaporateTime;
+            destEvaporation.EvaporationToggle = srcEvaporation.EvaporationToggle;
+            destEvaporation.SolutionName = srcEvaporation.SolutionName;
+            destEvaporation.LowerLimit = srcEvaporation.LowerLimit;
+            destEvaporation.UpperLimit = srcEvaporation.UpperLimit;
         }
     }
 }

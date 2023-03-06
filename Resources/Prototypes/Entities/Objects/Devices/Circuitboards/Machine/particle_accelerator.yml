@@ -1,10 +1,11 @@
-﻿# TODO: Add descriptions (3)
-
-- type: entity
+﻿- type: entity
   id: MachineParticleAcceleratorEndCapCircuitboard
   parent: BaseMachineCircuitboard
-  name: PA End Cap
+  name: PA end cap board
+  description: A machine board for a particle accelerator end cap
   components:
+    - type: Sprite
+      state: engineering
     - type: MachineBoard
       prototype: ParticleAcceleratorEndCapUnfinished
       materialRequirements:
@@ -14,8 +15,11 @@
 - type: entity
   id: MachineParticleAcceleratorFuelChamberCircuitboard
   parent: BaseMachineCircuitboard
-  name: PA Fuel Chamber
+  name: PA fuel chamber board
+  description: A machine board for a particle accelerator fuel chamber
   components:
+    - type: Sprite
+      state: engineering
     - type: MachineBoard
       prototype: ParticleAcceleratorFuelChamberUnfinished
       componentRequirements:
@@ -30,8 +34,11 @@
 - type: entity
   id: MachineParticleAcceleratorPowerBoxCircuitboard
   parent: BaseMachineCircuitboard
-  name: PA Power Box
+  name: PA power box board
+  description: A machine board for a particle accelerator power box
   components:
+    - type: Sprite
+      state: engineering
     - type: MachineBoard
       prototype: ParticleAcceleratorPowerBoxUnfinished
       materialRequirements:
@@ -43,8 +50,11 @@
 - type: entity
   id: MachineParticleAcceleratorEmitterLeftCircuitboard
   parent: BaseMachineCircuitboard
-  name: PA Emitter Left
+  name: PA emitter left board
+  description: A machine board for a particle accelerator left emitter
   components:
+    - type: Sprite
+      state: engineering
     - type: MachineBoard
       prototype: ParticleAcceleratorEmitterLeftUnfinished
       materialRequirements:
@@ -54,8 +64,11 @@
 - type: entity
   id: MachineParticleAcceleratorEmitterCenterCircuitboard
   parent: BaseMachineCircuitboard
-  name: PA Emitter Center
+  name: PA emitter center board
+  description: A machine board for a particle accelerator center emitter
   components:
+    - type: Sprite
+      state: engineering
     - type: MachineBoard
       prototype: ParticleAcceleratorEmitterCenterUnfinished
       materialRequirements:
@@ -65,8 +78,11 @@
 - type: entity
   id: MachineParticleAcceleratorEmitterRightCircuitboard
   parent: BaseMachineCircuitboard
-  name: PA Emitter Right
+  name: PA emitter right board
+  description: A machine board for a particle accelerator right emitter
   components:
+    - type: Sprite
+      state: engineering
     - type: MachineBoard
       prototype: ParticleAcceleratorEmitterRightUnfinished
       materialRequirements:

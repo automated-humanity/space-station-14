@@ -38,6 +38,7 @@ namespace Content.Client.Stylesheets
         protected StyleBoxTexture BaseButtonSquare { get; }
 
         protected StyleBoxTexture BaseAngleRect { get; }
+        protected StyleBoxTexture AngleBorderRect { get; }
 
         protected StyleBase(IResourceCache resCache)
         {
@@ -114,6 +115,12 @@ namespace Content.Client.Stylesheets
             };
             BaseAngleRect.SetPatchMargin(StyleBox.Margin.All, 10);
 
+            AngleBorderRect = new StyleBoxTexture
+            {
+                Texture = resCache.GetTexture("/Textures/Interface/Nano/geometric_panel_border.svg.96dpi.png"),
+            };
+            AngleBorderRect.SetPatchMargin(StyleBox.Margin.All, 10);
+
             var vScrollBarGrabberNormal = new StyleBoxFlat
             {
                 BackgroundColor = Color.Gray.WithAlpha(0.35f), ContentMarginLeftOverride = DefaultGrabberSize,
@@ -164,7 +171,7 @@ namespace Content.Client.Stylesheets
 
                 // Window close button base texture.
                 new StyleRule(
-                    new SelectorElement(typeof(TextureButton), new[] {SS14Window.StyleClassWindowCloseButton}, null,
+                    new SelectorElement(typeof(TextureButton), new[] {DefaultWindow.StyleClassWindowCloseButton}, null,
                         null),
                     new[]
                     {
@@ -173,7 +180,7 @@ namespace Content.Client.Stylesheets
                     }),
                 // Window close button hover.
                 new StyleRule(
-                    new SelectorElement(typeof(TextureButton), new[] {SS14Window.StyleClassWindowCloseButton}, null,
+                    new SelectorElement(typeof(TextureButton), new[] {DefaultWindow.StyleClassWindowCloseButton}, null,
                         new[] {TextureButton.StylePseudoClassHover}),
                     new[]
                     {
@@ -181,7 +188,7 @@ namespace Content.Client.Stylesheets
                     }),
                 // Window close button pressed.
                 new StyleRule(
-                    new SelectorElement(typeof(TextureButton), new[] {SS14Window.StyleClassWindowCloseButton}, null,
+                    new SelectorElement(typeof(TextureButton), new[] {DefaultWindow.StyleClassWindowCloseButton}, null,
                         new[] {TextureButton.StylePseudoClassPressed}),
                     new[]
                     {

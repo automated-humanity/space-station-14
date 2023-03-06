@@ -11,7 +11,7 @@ using Robust.Shared.Localization;
 namespace Content.Client.Administration.UI.Tabs.AdminTab
 {
     [GenerateTypedNameReferences]
-    public partial class AdminShuttleWindow : SS14Window
+    public sealed partial class AdminShuttleWindow : DefaultWindow
     {
         public AdminShuttleWindow()
         {
@@ -24,7 +24,7 @@ namespace Content.Client.Administration.UI.Tabs.AdminTab
         private void CallShuttleTimeOnOnTextChanged(LineEdit.LineEditEventArgs obj)
         {
             var loc = IoCManager.Resolve<ILocalizationManager>();
-            _callShuttleButton.Disabled = !TimeSpan.TryParseExact(obj.Text, Localization.TimeSpanMinutesFormats, loc.DefaultCulture, out _);
+            _callShuttleButton.Disabled = !TimeSpan.TryParseExact(obj.Text, ContentLocalizationManager.TimeSpanMinutesFormats, loc.DefaultCulture, out _);
             _callShuttleButton.Command = $"callshuttle {obj.Text}";
         }
     }

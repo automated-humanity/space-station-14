@@ -1,19 +1,29 @@
 using Content.Shared.APC;
 using JetBrains.Annotations;
 using Robust.Client.GameObjects;
+using Robust.Client.State;
 using Robust.Shared.GameObjects;
 using Robust.Shared.IoC;
+using Robust.Shared.Maths;
 
 namespace Content.Client.Power.APC
 {
-    public class ApcVisualizer : AppearanceVisualizer
+    public sealed class ApcVisualizer : AppearanceVisualizer
     {
+        public static readonly Color LackColor = Color.FromHex("#d1332e");
+        public static readonly Color ChargingColor = Color.FromHex("#2e8ad1");
+        public static readonly Color FullColor = Color.FromHex("#3db83b");
+        public static readonly Color EmagColor = Color.FromHex("#1f48d6");
+
         [UsedImplicitly]
+        [Obsolete("Subscribe to your component being initialised instead.")]
         public override void InitializeEntity(EntityUid entity)
         {
             base.InitializeEntity(entity);
 
-            var sprite = IoCManager.Resolve<IEntityManager>().GetComponent<ISpriteComponent>(entity);
+            var sprite = IoCManager.Resolve<IEntityManager>().GetComponent<SpriteComponent>(entity);
+
+            sprite.LayerMapSet(Layers.Panel, sprite.AddLayerState("apc0"));
 
             sprite.LayerMapSet(Layers.ChargeState, sprite.AddLayerState("apco3-0"));
             sprite.LayerSetShader(Layers.ChargeState, "unshaded");
@@ -31,14 +41,28 @@ namespace Content.Client.Power.APC
             sprite.LayerSetShader(Layers.Environment, "unshaded");
         }
 
+        [Obsolete("Subscribe to AppearanceChangeEvent instead.")]
         public override void OnChangeData(AppearanceComponent component)
         {
             base.OnChangeData(component);
 
-            var sprite = IoCManager.Resolve<IEntityManager>().GetComponent<ISpriteComponent>(component.Owner);
-            if (component.TryGetData<ApcChargeState>(ApcVisuals.ChargeState, out var state))
+            var ent = IoCManager.Resolve<IEntityManager>();
+            var sprite = ent.GetComponent<SpriteComponent>(component.Owner);
+            if (component.TryGetData<ApcPanelState>(ApcVisuals.PanelState, out var panelState))
             {
-                switch (state)
+                switch (panelState)
+                {
+                    case ApcPanelState.Closed:
+                        sprite.LayerSetState(Layers.Panel, "apc0");
+                        break;
+                    case ApcPanelState.Open:
+                        sprite.LayerSetState(Layers.Panel, "apcframe");
+                        break;
+                }
+            }
+            if (component.TryGetData<ApcChargeState>(ApcVisuals.ChargeState, out var chargeState))
+            {
+                switch (chargeState)
                 {
                     case ApcChargeState.Lack:
                         sprite.LayerSetState(Layers.ChargeState, "apco3-0");
@@ -49,6 +73,21 @@ namespace Content.Client.Power.APC
                     case ApcChargeState.Full:
                         sprite.LayerSetState(Layers.ChargeState, "apco3-2");
                         break;
+                    case ApcChargeState.Emag:
+                        sprite.LayerSetState(Layers.ChargeState, "emag-unlit");
+                        break;
+                }
+
+                if (ent.TryGetComponent(component.Owner, out SharedPointLightComponent? light))
+                {
+                    light.Color = chargeState switch
+                    {
+                        ApcChargeState.Lack => LackColor,
+                        ApcChargeState.Charging => ChargingColor,
+                        ApcChargeState.Full => FullColor,
+                        ApcChargeState.Emag => EmagColor,
+                        _ => LackColor
+                    };
                 }
             }
             else
@@ -64,6 +103,7 @@ namespace Content.Client.Power.APC
             Equipment,
             Lighting,
             Environment,
+            Panel,
         }
     }
 }

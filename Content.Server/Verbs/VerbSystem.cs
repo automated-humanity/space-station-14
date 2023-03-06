@@ -6,16 +6,14 @@ using Content.Shared.Database;
 using Content.Shared.Hands.Components;
 using Content.Shared.Verbs;
 using Robust.Server.Player;
-using Robust.Shared.GameObjects;
-using Robust.Shared.IoC;
-using Robust.Shared.Log;
 using Robust.Shared.Player;
+using System.Linq;
 
 namespace Content.Server.Verbs
 {
     public sealed class VerbSystem : SharedVerbSystem
     {
-        [Dependency] private readonly SharedAdminLogSystem _logSystem = default!;
+        [Dependency] private readonly ISharedAdminLogManager _adminLogger = default!;
         [Dependency] private readonly PopupSystem _popupSystem = default!;
         [Dependency] private readonly IAdminManager _adminMgr = default!;
 
@@ -49,8 +47,19 @@ namespace Content.Server.Verbs
             var force = args.AdminRequest && eventArgs.SenderSession is IPlayerSession playerSession &&
                         _adminMgr.HasAdminFlag(playerSession, AdminFlags.Admin);
 
+            List<Type> verbTypes = new();
+            foreach (var key in args.VerbTypes)
+            {
+                var type = Verb.VerbTypes.FirstOrDefault(x => x.Name == key);
+
+                if (type != null)
+                    verbTypes.Add(type);
+                else
+                    Logger.Error($"Unknown verb type received: {key}");
+            }
+
             var response =
-                new VerbsResponseEvent(args.EntityUid, GetLocalVerbs(args.EntityUid, attached, args.Type, force));
+                new VerbsResponseEvent(args.EntityUid, GetLocalVerbs(args.EntityUid, attached, verbTypes, force));
             RaiseNetworkEvent(response, player.ConnectedClient);
         }
 
@@ -67,7 +76,7 @@ namespace Content.Server.Verbs
             {
                 // Send an informative pop-up message
                 if (!string.IsNullOrWhiteSpace(verb.Message))
-                    _popupSystem.PopupEntity(verb.Message, user, Filter.Entities(user));
+                    _popupSystem.PopupEntity(verb.Message, user, user);
 
                 return;
             }
@@ -75,17 +84,7 @@ namespace Content.Server.Verbs
             // first, lets log the verb. Just in case it ends up crashing the server or something.
             LogVerb(verb, user, target, forced);
 
-            // then invoke any relevant actions
-            verb.Act?.Invoke();
-
-            // Maybe raise a local event
-            if (verb.ExecutionEventArgs != null)
-            {
-                if (verb.EventTarget.IsValid())
-                    RaiseLocalEvent(verb.EventTarget, verb.ExecutionEventArgs);
-                else
-                    RaiseLocalEvent(verb.ExecutionEventArgs);
-            }
+            base.ExecuteVerb(verb, user, target, forced);
         }
 
         public void LogVerb(Verb verb, EntityUid user, EntityUid target, bool forced)
@@ -93,7 +92,7 @@ namespace Content.Server.Verbs
             // first get the held item. again.
             EntityUid? holding = null;
             if (TryComp(user, out SharedHandsComponent? hands) &&
-                hands.TryGetActiveHeldEntity(out var heldEntity))
+                hands.ActiveHandEntity is EntityUid heldEntity)
             {
                 holding = heldEntity;
             }
@@ -109,12 +108,12 @@ namespace Content.Server.Verbs
 
             if (holding == null)
             {
-                _logSystem.Add(LogType.Verb, verb.Impact,
+                _adminLogger.Add(LogType.Verb, verb.Impact,
                         $"{ToPrettyString(user):user} {executionText} the [{verbText:verb}] verb targeting {ToPrettyString(target):target}");
             }
             else
             {
-                _logSystem.Add(LogType.Verb, verb.Impact,
+                _adminLogger.Add(LogType.Verb, verb.Impact,
                        $"{ToPrettyString(user):user} {executionText} the [{verbText:verb}] verb targeting {ToPrettyString(target):target} while holding {ToPrettyString(holding.Value):held}");
             }
         }

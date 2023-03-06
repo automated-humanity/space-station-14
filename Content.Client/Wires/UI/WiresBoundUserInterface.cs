@@ -1,14 +1,14 @@
-﻿using Robust.Client.GameObjects;
+using Content.Shared.Wires;
+using Robust.Client.GameObjects;
 using Robust.Shared.GameObjects;
-using static Content.Shared.Wires.SharedWiresComponent;
 
 namespace Content.Client.Wires.UI
 {
-    public class WiresBoundUserInterface : BoundUserInterface
+    public sealed class WiresBoundUserInterface : BoundUserInterface
     {
         private WiresMenu? _menu;
 
-        public WiresBoundUserInterface(ClientUserInterfaceComponent owner, object uiKey) : base(owner, uiKey)
+        public WiresBoundUserInterface(ClientUserInterfaceComponent owner, Enum uiKey) : base(owner, uiKey)
         {
         }
 
@@ -18,7 +18,7 @@ namespace Content.Client.Wires.UI
 
             _menu = new WiresMenu(this);
             _menu.OnClose += Close;
-            _menu.OpenCentered();
+            _menu.OpenCenteredLeft();
         }
 
         protected override void UpdateState(BoundUserInterfaceState state)

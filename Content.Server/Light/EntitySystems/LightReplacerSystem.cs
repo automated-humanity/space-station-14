@@ -1,24 +1,19 @@
 using System.Linq;
 using Content.Server.Light.Components;
 using Content.Server.Storage.Components;
-using Content.Shared.ActionBlocker;
 using Content.Shared.Interaction;
-using Content.Shared.Light;
+using Content.Shared.Light.Component;
 using Content.Shared.Popups;
 using JetBrains.Annotations;
 using Robust.Shared.Audio;
 using Robust.Shared.Containers;
-using Robust.Shared.GameObjects;
-using Robust.Shared.IoC;
-using Robust.Shared.Localization;
 using Robust.Shared.Player;
 
 namespace Content.Server.Light.EntitySystems
 {
     [UsedImplicitly]
-    public class LightReplacerSystem : EntitySystem
+    public sealed class LightReplacerSystem : EntitySystem
     {
-        [Dependency] private readonly ActionBlockerSystem _blocker = default!;
         [Dependency] private readonly PoweredLightSystem _poweredLight = default!;
         [Dependency] private readonly SharedPopupSystem _popupSystem = default!;
 
@@ -42,7 +37,6 @@ namespace Content.Server.Light.EntitySystems
                 return;
 
             // standard interaction checks
-            if (!_blocker.CanUse(eventArgs.User)) return;
             if (!eventArgs.CanReach) return;
 
             // behaviour will depends on target type
@@ -63,9 +57,6 @@ namespace Content.Server.Light.EntitySystems
         {
             if (eventArgs.Handled)
                 return;
-
-            // standard interaction checks
-            if (!_blocker.CanInteract(eventArgs.User)) return;
 
             var usedUid = eventArgs.Used;
 
@@ -130,7 +121,7 @@ namespace Content.Server.Light.EntitySystems
                     {
                         var msg = Loc.GetString("comp-light-replacer-missing-light",
                             ("light-replacer", replacer.Owner));
-                        _popupSystem.PopupEntity(msg, replacerUid, Filter.Entities(userUid.Value));
+                        _popupSystem.PopupEntity(msg, replacerUid, userUid.Value);
                     }
                     return false;
                 }
@@ -140,8 +131,8 @@ namespace Content.Server.Light.EntitySystems
             var wasReplaced = _poweredLight.ReplaceBulb(fixtureUid, bulb, fixture);
             if (wasReplaced)
             {
-                SoundSystem.Play(Filter.Pvs(replacerUid), replacer.Sound.GetSound(),
-                    replacerUid, AudioParams.Default.WithVolume(-4f));
+                SoundSystem.Play(replacer.Sound.GetSound(),
+                    Filter.Pvs(replacerUid), replacerUid, AudioParams.Default.WithVolume(-4f));
             }
 
 
@@ -166,7 +157,7 @@ namespace Content.Server.Light.EntitySystems
                 if (showTooltip && userUid != null)
                 {
                     var msg = Loc.GetString("comp-light-replacer-insert-broken-light");
-                    _popupSystem.PopupEntity(msg, replacerUid, Filter.Entities(userUid.Value));
+                    _popupSystem.PopupEntity(msg, replacerUid, userUid.Value);
                 }
 
                 return false;
@@ -178,7 +169,7 @@ namespace Content.Server.Light.EntitySystems
             {
                 var msg = Loc.GetString("comp-light-replacer-insert-light",
                     ("light-replacer", replacer.Owner), ("bulb", bulb.Owner));
-                _popupSystem.PopupEntity(msg, replacerUid, Filter.Entities(userUid.Value));
+                _popupSystem.PopupEntity(msg, replacerUid, userUid.Value, PopupType.Medium);
             }
 
             return hasInsert;
@@ -217,7 +208,7 @@ namespace Content.Server.Light.EntitySystems
             if (insertedBulbs > 0 && userUid != null)
             {
                 var msg = Loc.GetString("comp-light-replacer-refill-from-storage", ("light-replacer", storage.Owner));
-                _popupSystem.PopupEntity(msg, replacerUid, Filter.Entities(userUid.Value));
+                _popupSystem.PopupEntity(msg, replacerUid, userUid.Value, PopupType.Medium);
             }
 
             return insertedBulbs > 0;

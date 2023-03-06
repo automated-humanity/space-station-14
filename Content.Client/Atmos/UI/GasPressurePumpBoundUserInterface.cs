@@ -13,13 +13,13 @@ namespace Content.Client.Atmos.UI
     /// Initializes a <see cref="GasPressurePumpWindow"/> and updates it when new server messages are received.
     /// </summary>
     [UsedImplicitly]
-    public class GasPressurePumpBoundUserInterface : BoundUserInterface
+    public sealed class GasPressurePumpBoundUserInterface : BoundUserInterface
     {
 
         private GasPressurePumpWindow? _window;
         private const float MaxPressure = Atmospherics.MaxOutputPressure;
 
-        public GasPressurePumpBoundUserInterface(ClientUserInterfaceComponent owner, object uiKey) : base(owner, uiKey)
+        public GasPressurePumpBoundUserInterface(ClientUserInterfaceComponent owner, Enum uiKey) : base(owner, uiKey)
         {
         }
 

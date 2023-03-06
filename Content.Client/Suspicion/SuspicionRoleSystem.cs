@@ -1,16 +1,18 @@
 using Robust.Client.GameObjects;
-using Robust.Shared.GameObjects;
 
 namespace Content.Client.Suspicion
 {
-    class SuspicionRoleSystem : EntitySystem
+    sealed class SuspicionRoleSystem : EntitySystem
     {
         public override void Initialize()
         {
             base.Initialize();
 
-            SubscribeLocalEvent<SuspicionRoleComponent, PlayerAttachedEvent>((_, component, _) => component.PlayerAttached());
-            SubscribeLocalEvent<SuspicionRoleComponent, PlayerDetachedEvent>((_, component, _) => component.PlayerDetached());
+            SubscribeLocalEvent<SuspicionRoleComponent, ComponentAdd>((_, component, _) => component.AddUI());
+            SubscribeLocalEvent<SuspicionRoleComponent, ComponentRemove>((_, component, _) => component.RemoveUI());
+
+            SubscribeLocalEvent<SuspicionRoleComponent, PlayerAttachedEvent>((_, component, _) => component.AddUI());
+            SubscribeLocalEvent<SuspicionRoleComponent, PlayerDetachedEvent>((_, component, _) => component.RemoveUI());
         }
     }
 }

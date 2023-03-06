@@ -1,32 +1,35 @@
 - type: entity
+  parent: BaseStructure
   id: Rack
   name: rack
   description: A rack for storing things on.
-  placement:
-    mode: SnapgridCenter
   components:
-  - type: Transform
-    anchored: true
-  - type: Clickable
+  - type: MeleeSound
+    soundGroups:
+      Brute:
+        path:
+          "/Audio/Weapons/dodgeball.ogg"
+  - type: Construction
+    graph: Rack
+    node: Rack
+  - type: Anchorable
   - type: InteractionOutline
   - type: PlaceableSurface
   - type: Sprite
     sprite: Structures/Furniture/furniture.rsi
     state: rack
-  - type: Physics
-    bodyType: Static
+    netsync: false
+    snapCardinals: true
   - type: Fixtures
     fixtures:
     - shape:
         !type:PhysShapeAabb
-          bounds: "-0.3,-0.3,0.3,0.3"
-      mass: 50
-      layer:
-      - MobImpassable
+        bounds: "-0.3,-0.3,0.3,0.3"
+      density: 140
       mask:
-      - VaultImpassable
-  - type: Pullable
-  - type: Anchorable
+      - MachineMask
+      layer:
+      - MachineLayer
   - type: Damageable
     damageContainer: Inorganic
     damageModifierSet: Metallic
@@ -46,3 +49,6 @@
             max: 1
       - !type:DoActsBehavior
         acts: [ "Destruction" ]
+  - type: Climbable
+  - type: StaticPrice
+    price: 150

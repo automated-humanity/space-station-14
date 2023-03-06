@@ -1,19 +1,16 @@
-﻿using Content.Server.Disposal.Unit.Components;
-using Robust.Shared.GameObjects;
-using Robust.Shared.IoC;
-using Robust.Shared.Maths;
-using Robust.Shared.Serialization.Manager.Attributes;
+using Content.Server.Disposal.Unit.Components;
 
 namespace Content.Server.Disposal.Tube.Components
 {
     [RegisterComponent]
     [ComponentReference(typeof(IDisposalTubeComponent))]
-    public class DisposalBendComponent : DisposalTubeComponent
+    [ComponentReference(typeof(DisposalTubeComponent))]
+    public sealed class DisposalBendComponent : DisposalTubeComponent
     {
+        public override string ContainerId => "DisposalBend";
+
         [DataField("sideDegrees")]
         private int _sideDegrees = -90;
-
-        public override string Name => "DisposalBend";
 
         protected override Direction[] ConnectableDirections()
         {

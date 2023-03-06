@@ -1,50 +1,36 @@
-using System;
-using System.Collections.Generic;
 using System.Linq;
-using Content.Server.Alert;
+using Content.Server.Administration.Logs;
 using Content.Server.DoAfter;
 using Content.Server.Hands.Components;
+using Content.Server.Hands.Systems;
+using Content.Shared.ActionBlocker;
 using Content.Shared.Alert;
 using Content.Shared.Cuffs.Components;
-using Content.Shared.Interaction.Helpers;
+using Content.Shared.Hands.Components;
+using Content.Shared.Database;
+using Content.Shared.Hands.EntitySystems;
+using Content.Shared.Interaction;
+using Content.Shared.Interaction.Components;
 using Content.Shared.Popups;
+using Robust.Server.Containers;
 using Robust.Server.GameObjects;
 using Robust.Shared.Audio;
 using Robust.Shared.Containers;
-using Robust.Shared.GameObjects;
-using Robust.Shared.IoC;
-using Robust.Shared.Localization;
-using Robust.Shared.Log;
-using Robust.Shared.Maths;
 using Robust.Shared.Player;
-using Robust.Shared.ViewVariables;
+using Content.Server.Recycling.Components;
+using Content.Shared.DoAfter;
+using Robust.Shared.Map;
 
 namespace Content.Server.Cuffs.Components
 {
     [RegisterComponent]
     [ComponentReference(typeof(SharedCuffableComponent))]
-    public class CuffableComponent : SharedCuffableComponent
+    public sealed class CuffableComponent : SharedCuffableComponent
     {
         [Dependency] private readonly IEntityManager _entMan = default!;
-
-        /// <summary>
-        /// How many of this entity's hands are currently cuffed.
-        /// </summary>
-        [ViewVariables]
-        public int CuffedHandCount => Container.ContainedEntities.Count * 2;
-
-        protected EntityUid LastAddedCuffs => Container.ContainedEntities[^1];
-
-        public IReadOnlyList<EntityUid> StoredEntities => Container.ContainedEntities;
-
-        /// <summary>
-        ///     Container of various handcuffs currently applied to the entity.
-        /// </summary>
-        [ViewVariables(VVAccess.ReadOnly)]
-        public Container Container { get; set; } = default!;
-
-        // TODO: Make a component message
-        public event Action? OnCuffedStateChanged;
+        [Dependency] private readonly IEntitySystemManager _sysMan = default!;
+        [Dependency] private readonly IComponentFactory _componentFactory = default!;
+        [Dependency] private readonly IAdminLogManager _adminLogger = default!;
 
         private bool _uncuffing;
 
@@ -52,7 +38,6 @@ namespace Content.Server.Cuffs.Components
         {
             base.Initialize();
 
-            Container = ContainerHelpers.EnsureContainer<Container>(Owner, Name);
             Owner.EnsureComponentWarn<HandsComponent>();
         }
 
@@ -88,7 +73,6 @@ namespace Content.Server.Cuffs.Components
         /// <summary>
         /// Add a set of cuffs to an existing CuffedComponent.
         /// </summary>
-        /// <param name="prototype"></param>
         public bool TryAddNewCuffs(EntityUid user, EntityUid handcuff)
         {
             if (!_entMan.HasComponent<HandcuffComponent>(handcuff))
@@ -97,60 +81,60 @@ namespace Content.Server.Cuffs.Components
                 return false;
             }
 
-            if (!handcuff.InRangeUnobstructed(Owner))
+            if (!EntitySystem.Get<SharedInteractionSystem>().InRangeUnobstructed(handcuff, Owner))
             {
                 Logger.Warning("Handcuffs being applied to player are obstructed or too far away! This should not happen!");
                 return true;
             }
 
+            var sys = _entMan.EntitySysManager.GetEntitySystem<SharedHandsSystem>();
+
             // Success!
-            if (_entMan.TryGetComponent(user, out HandsComponent? handsComponent) && handsComponent.IsHolding(handcuff))
-            {
-                // Good lord handscomponent is scuffed, I hope some smug person will fix it someday
-                handsComponent.Drop(handcuff);
-            }
+            sys.TryDrop(user, handcuff);
 
             Container.Insert(handcuff);
-            CanStillInteract = _entMan.TryGetComponent(Owner, out HandsComponent? ownerHands) && ownerHands.HandNames.Count() > CuffedHandCount;
-
-            OnCuffedStateChanged?.Invoke();
-            UpdateAlert();
-            UpdateHeldItems();
-            Dirty();
+            UpdateHeldItems(handcuff);
             return true;
         }
 
-        public void CuffedStateChanged()
-        {
-            UpdateAlert();
-            OnCuffedStateChanged?.Invoke();
-        }
-
         /// <summary>
-        /// Check how many items the user is holding and if it's more than the number of cuffed hands, drop some items.
+        ///     Adds virtual cuff items to the user's hands.
         /// </summary>
-        public void UpdateHeldItems()
+        public void UpdateHeldItems(EntityUid handcuff)
         {
+            // TODO when ecs-ing this, we probably don't just want to use the generic virtual-item entity, and instead
+            // want to add our own item, so that use-in-hand triggers an uncuff attempt and the like.
+
             if (!_entMan.TryGetComponent(Owner, out HandsComponent? handsComponent)) return;
 
-            var itemCount = handsComponent.GetAllHeldItems().Count();
-            var freeHandCount = handsComponent.HandNames.Count() - CuffedHandCount;
+            var handSys = _entMan.EntitySysManager.GetEntitySystem<SharedHandsSystem>();
 
-            if (freeHandCount < itemCount)
+            var freeHands = 0;
+            foreach (var hand in handSys.EnumerateHands(Owner, handsComponent))
             {
-                foreach (var item in handsComponent.GetAllHeldItems())
+                if (hand.HeldEntity == null)
                 {
-                    if (freeHandCount < itemCount)
-                    {
-                        freeHandCount++;
-                        handsComponent.Drop(item.Owner, false);
-                    }
-                    else
-                    {
-                        break;
-                    }
+                    freeHands++;
+                    continue;
                 }
+
+                // Is this entity removable? (it might be an existing handcuff blocker)
+                if (_entMan.HasComponent<UnremoveableComponent>(hand.HeldEntity))
+                    continue;
+
+                handSys.DoDrop(Owner, hand, true, handsComponent);
+                freeHands++;
+                if (freeHands == 2)
+                    break;
             }
+
+            var virtSys = _entMan.EntitySysManager.GetEntitySystem<HandVirtualItemSystem>();
+
+            if (virtSys.TrySpawnVirtualItemInHand(handcuff, Owner, out var virtItem1))
+                _entMan.EnsureComponent<UnremoveableComponent>(virtItem1.Value);
+
+            if (virtSys.TrySpawnVirtualItemInHand(handcuff, Owner, out var virtItem2))
+                _entMan.EnsureComponent<UnremoveableComponent>(virtItem2.Value);
         }
 
         /// <summary>
@@ -158,16 +142,13 @@ namespace Content.Server.Cuffs.Components
         /// </summary>
         private void UpdateAlert()
         {
-            if (_entMan.TryGetComponent(Owner, out ServerAlertsComponent? status))
+            if (CanStillInteract)
             {
-                if (CanStillInteract)
-                {
-                    status.ClearAlert(AlertType.Handcuffed);
-                }
-                else
-                {
-                    status.ShowAlert(AlertType.Handcuffed);
-                }
+                EntitySystem.Get<AlertsSystem>().ClearAlert(Owner, AlertType.Handcuffed);
+            }
+            else
+            {
+                EntitySystem.Get<AlertsSystem>().ShowAlert(Owner, AlertType.Handcuffed);
             }
         }
 
@@ -207,14 +188,14 @@ namespace Content.Server.Cuffs.Components
             }
 
             var attempt = new UncuffAttemptEvent(user, Owner);
-            _entMan.EventBus.RaiseLocalEvent(user, attempt);
+            _entMan.EventBus.RaiseLocalEvent(user, attempt, true);
 
             if (attempt.Cancelled)
             {
                 return;
             }
 
-            if (!isOwner && !user.InRangeUnobstructed(Owner))
+            if (!isOwner && !EntitySystem.Get<SharedInteractionSystem>().InRangeUnobstructed(user, Owner))
             {
                 user.PopupMessage(Loc.GetString("cuffable-component-cannot-remove-cuffs-too-far-message"));
                 return;
@@ -224,17 +205,18 @@ namespace Content.Server.Cuffs.Components
 
             if (isOwner)
             {
-                SoundSystem.Play(Filter.Pvs(Owner), cuff.StartBreakoutSound.GetSound(), Owner);
+                SoundSystem.Play(cuff.StartBreakoutSound.GetSound(), Filter.Pvs(Owner, entityManager: _entMan), Owner);
             }
             else
             {
-                SoundSystem.Play(Filter.Pvs(Owner), cuff.StartUncuffSound.GetSound(), Owner);
+                SoundSystem.Play(cuff.StartUncuffSound.GetSound(), Filter.Pvs(Owner, entityManager: _entMan), Owner);
             }
 
             var uncuffTime = isOwner ? cuff.BreakoutTime : cuff.UncuffTime;
-            var doAfterEventArgs = new DoAfterEventArgs(user, uncuffTime)
+            var doAfterEventArgs = new DoAfterEventArgs(user, uncuffTime, target: Owner)
             {
                 BreakOnUserMove = true,
+                BreakOnTargetMove = true,
                 BreakOnDamage = true,
                 BreakOnStun = true,
                 NeedHand = true
@@ -249,64 +231,65 @@ namespace Content.Server.Cuffs.Components
 
             if (result != DoAfterStatus.Cancelled)
             {
-                SoundSystem.Play(Filter.Pvs(Owner), cuff.EndUncuffSound.GetSound(), Owner);
-
-                Container.ForceRemove(cuffsToRemove.Value);
-                var transform = _entMan.GetComponent<TransformComponent>(cuffsToRemove.Value);
-                transform.AttachToGridOrMap();
-                transform.WorldPosition = _entMan.GetComponent<TransformComponent>(Owner).WorldPosition;
-
-                if (cuff.BreakOnRemove)
-                {
-                    cuff.Broken = true;
-
-                    var meta = _entMan.GetComponent<MetaDataComponent>(cuffsToRemove.Value);
-                    meta.EntityName = cuff.BrokenName;
-                    meta.EntityDescription = cuff.BrokenDesc;
-
-                    if (_entMan.TryGetComponent<SpriteComponent?>(cuffsToRemove, out var sprite) && cuff.BrokenState != null)
-                    {
-                        sprite.LayerSetState(0, cuff.BrokenState); // TODO: safety check to see if RSI contains the state?
-                    }
-                }
-
-                CanStillInteract = _entMan.TryGetComponent(Owner, out HandsComponent? handsComponent) && handsComponent.HandNames.Count() > CuffedHandCount;
-                OnCuffedStateChanged?.Invoke();
-                UpdateAlert();
-                Dirty();
-
-                if (CuffedHandCount == 0)
-                {
-                    user.PopupMessage(Loc.GetString("cuffable-component-remove-cuffs-success-message"));
-
-                    if (!isOwner)
-                    {
-                        user.PopupMessage(Owner, Loc.GetString("cuffable-component-remove-cuffs-by-other-success-message", ("otherName", user)));
-                    }
-                }
-                else
-                {
-                    if (!isOwner)
-                    {
-                        user.PopupMessage(Loc.GetString("cuffable-component-remove-cuffs-partial-success-message",
-                                                        ("cuffedHandCount", CuffedHandCount),
-                                                        ("otherName", user)));
-                        user.PopupMessage(Owner, Loc.GetString("cuffable-component-remove-cuffs-by-other-partial-success-message",
-                                                               ("otherName", user),
-                                                               ("cuffedHandCount", CuffedHandCount)));
-                    }
-                    else
-                    {
-                        user.PopupMessage(Loc.GetString("cuffable-component-remove-cuffs-partial-success-message", ("cuffedHandCount", CuffedHandCount)));
-                    }
-                }
+                Uncuff(user, cuffsToRemove.Value, cuff, isOwner);
             }
             else
             {
                 user.PopupMessage(Loc.GetString("cuffable-component-remove-cuffs-fail-message"));
             }
+        }
 
-            return;
+        //Lord forgive me for putting this here
+        //Cuff ECS when
+        public void Uncuff(EntityUid user, EntityUid cuffsToRemove, HandcuffComponent cuff, bool isOwner)
+        {
+            SoundSystem.Play(cuff.EndUncuffSound.GetSound(), Filter.Pvs(Owner), Owner);
+
+            _entMan.EntitySysManager.GetEntitySystem<HandVirtualItemSystem>().DeleteInHandsMatching(user, cuffsToRemove);
+            Container.Remove(cuffsToRemove);
+
+            if (cuff.BreakOnRemove)
+            {
+                _entMan.QueueDeleteEntity(cuffsToRemove);
+                var trash = _entMan.SpawnEntity(cuff.BrokenPrototype, MapCoordinates.Nullspace);
+                _entMan.EntitySysManager.GetEntitySystem<SharedHandsSystem>().PickupOrDrop(user, trash);
+            }
+            else
+            {
+                _entMan.EntitySysManager.GetEntitySystem<SharedHandsSystem>().PickupOrDrop(user, cuffsToRemove);
+            }
+
+            if (CuffedHandCount == 0)
+            {
+                user.PopupMessage(Loc.GetString("cuffable-component-remove-cuffs-success-message"));
+
+                if (!isOwner)
+                {
+                    user.PopupMessage(Owner, Loc.GetString("cuffable-component-remove-cuffs-by-other-success-message", ("otherName", user)));
+                }
+
+                if (user == Owner)
+                {
+                    _adminLogger.Add(LogType.Action, LogImpact.Medium, $"{_entMan.ToPrettyString(user):player} has successfully uncuffed themselves");
+                }
+                else
+                {
+                    _adminLogger.Add(LogType.Action, LogImpact.Medium, $"{_entMan.ToPrettyString(user):player} has successfully uncuffed {_entMan.ToPrettyString(Owner):player}");
+                }
+
+            }
+            else
+            {
+                if (!isOwner)
+                {
+                    user.PopupMessage(Loc.GetString("cuffable-component-remove-cuffs-partial-success-message", ("cuffedHandCount", CuffedHandCount), ("otherName", user)));
+                    user.PopupMessage(Owner, Loc.GetString("cuffable-component-remove-cuffs-by-other-partial-success-message", ("otherName", user), ("cuffedHandCount", CuffedHandCount)));
+                }
+                else
+                {
+                    user.PopupMessage(Loc.GetString("cuffable-component-remove-cuffs-partial-success-message", ("cuffedHandCount", CuffedHandCount)));
+                }
+            }
         }
     }
 }

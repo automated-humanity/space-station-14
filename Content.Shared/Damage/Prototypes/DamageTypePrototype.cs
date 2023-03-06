@@ -1,18 +1,26 @@
-using System;
 using Robust.Shared.Prototypes;
-using Robust.Shared.Serialization;
-using Robust.Shared.Serialization.Manager.Attributes;
 
 namespace Content.Shared.Damage.Prototypes
 {
     /// <summary>
-    ///     A single damage type. These types are grouped together in <see cref="DamageGroupPrototype"/>s. 
+    ///     A single damage type. These types are grouped together in <see cref="DamageGroupPrototype"/>s.
     /// </summary>
     [Prototype("damageType")]
-    [Serializable, NetSerializable]
-    public class DamageTypePrototype : IPrototype
+    public sealed class DamageTypePrototype : IPrototype
     {
-        [DataField("id", required: true)]
+        [IdDataField]
         public string ID { get; } = default!;
+
+        /// <summary>
+        /// The price for each 1% damage reduction in armors
+        /// </summary>
+        [DataField("armorCoefficientPrice")]
+        public double ArmorPriceCoefficient { get; set; }
+
+        /// <summary>
+        /// The price for each flat damage reduction in armors
+        /// </summary>
+        [DataField("armorFlatPrice")]
+        public double ArmorPriceFlat { get; set; }
     }
 }

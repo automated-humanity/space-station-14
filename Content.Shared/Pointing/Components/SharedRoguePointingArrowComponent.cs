@@ -1,16 +1,15 @@
-﻿using System;
-using Robust.Shared.GameObjects;
+﻿using Robust.Shared.GameStates;
 using Robust.Shared.Serialization;
 
 namespace Content.Shared.Pointing.Components
 {
-    public class SharedRoguePointingArrowComponent : Component
+    [NetworkedComponent]
+    public abstract class SharedRoguePointingArrowComponent : Component
     {
-        public sealed override string Name => "RoguePointingArrow";
     }
 
     [Serializable, NetSerializable]
-    public enum RoguePointingArrowVisuals
+    public enum RoguePointingArrowVisuals : byte
     {
         Rotation
     }

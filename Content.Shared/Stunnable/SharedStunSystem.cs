@@ -1,42 +1,57 @@
-using System;
-using Content.Shared.Alert;
+using Content.Shared.ActionBlocker;
+using Content.Shared.Administration.Logs;
 using Content.Shared.Audio;
 using Content.Shared.DragDrop;
 using Content.Shared.Interaction;
 using Content.Shared.Interaction.Events;
 using Content.Shared.Inventory.Events;
 using Content.Shared.Item;
-using Content.Shared.Movement;
-using Content.Shared.Movement.Components;
-using Content.Shared.Movement.EntitySystems;
-using Content.Shared.Speech;
+using Content.Shared.Bed.Sleep;
+using Content.Shared.Database;
+using Content.Shared.Hands;
+using Content.Shared.Mobs;
+using Content.Shared.Mobs.Components;
+using Content.Shared.Mobs.Systems;
+using Content.Shared.Movement.Events;
+using Content.Shared.Movement.Systems;
 using Content.Shared.Standing;
 using Content.Shared.StatusEffect;
 using Content.Shared.Throwing;
 using JetBrains.Annotations;
 using Robust.Shared.Audio;
-using Robust.Shared.GameObjects;
 using Robust.Shared.GameStates;
-using Robust.Shared.IoC;
 using Robust.Shared.Player;
-using Robust.Shared.Timing;
 
 namespace Content.Shared.Stunnable
 {
     [UsedImplicitly]
     public abstract class SharedStunSystem : EntitySystem
     {
+        [Dependency] private readonly ActionBlockerSystem _blocker = default!;
         [Dependency] private readonly StandingStateSystem _standingStateSystem = default!;
         [Dependency] private readonly StatusEffectsSystem _statusEffectSystem = default!;
         [Dependency] private readonly MovementSpeedModifierSystem _movementSpeedModifierSystem = default!;
+        [Dependency] private readonly SharedAudioSystem _audio = default!;
+        [Dependency] private readonly MobStateSystem _mobStateSystem = default!;
+        [Dependency] private readonly ISharedAdminLogManager _adminLogger = default!;
+
+        /// <summary>
+        /// Friction modifier for knocked down players.
+        /// Doesn't make them faster but makes them slow down... slower.
+        /// </summary>
+        public const float KnockDownModifier = 0.4f;
 
         public override void Initialize()
         {
             SubscribeLocalEvent<KnockedDownComponent, ComponentInit>(OnKnockInit);
-            SubscribeLocalEvent<KnockedDownComponent, ComponentRemove>(OnKnockRemove);
+            SubscribeLocalEvent<KnockedDownComponent, ComponentShutdown>(OnKnockShutdown);
+            SubscribeLocalEvent<KnockedDownComponent, StandAttemptEvent>(OnStandAttempt);
 
             SubscribeLocalEvent<SlowedDownComponent, ComponentInit>(OnSlowInit);
-            SubscribeLocalEvent<SlowedDownComponent, ComponentRemove>(OnSlowRemove);
+            SubscribeLocalEvent<SlowedDownComponent, ComponentShutdown>(OnSlowRemove);
+
+            SubscribeLocalEvent<StunnedComponent, ComponentStartup>(UpdateCanMove);
+            SubscribeLocalEvent<StunnedComponent, ComponentShutdown>(UpdateCanMove);
 
             SubscribeLocalEvent<SlowedDownComponent, ComponentGetState>(OnSlowGetState);
             SubscribeLocalEvent<SlowedDownComponent, ComponentHandleState>(OnSlowHandleState);
@@ -48,16 +63,56 @@ namespace Content.Shared.Stunnable
             SubscribeLocalEvent<KnockedDownComponent, InteractHandEvent>(OnInteractHand);
             SubscribeLocalEvent<SlowedDownComponent, RefreshMovementSpeedModifiersEvent>(OnRefreshMovespeed);
 
+            SubscribeLocalEvent<KnockedDownComponent, TileFrictionEvent>(OnKnockedTileFriction);
+
             // Attempt event subscriptions.
-            SubscribeLocalEvent<StunnedComponent, MovementAttemptEvent>(OnMoveAttempt);
-            SubscribeLocalEvent<StunnedComponent, InteractionAttemptEvent>(OnInteractAttempt);
-            SubscribeLocalEvent<StunnedComponent, UseAttemptEvent>(OnUseAttempt);
-            SubscribeLocalEvent<StunnedComponent, ThrowAttemptEvent>(OnThrowAttempt);
-            SubscribeLocalEvent<StunnedComponent, DropAttemptEvent>(OnDropAttempt);
-            SubscribeLocalEvent<StunnedComponent, PickupAttemptEvent>(OnPickupAttempt);
-            SubscribeLocalEvent<StunnedComponent, AttackAttemptEvent>(OnAttackAttempt);
+            SubscribeLocalEvent<StunnedComponent, ChangeDirectionAttemptEvent>(OnAttempt);
+            SubscribeLocalEvent<StunnedComponent, UpdateCanMoveEvent>(OnMoveAttempt);
+            SubscribeLocalEvent<StunnedComponent, InteractionAttemptEvent>(OnAttempt);
+            SubscribeLocalEvent<StunnedComponent, UseAttemptEvent>(OnAttempt);
+            SubscribeLocalEvent<StunnedComponent, ThrowAttemptEvent>(OnAttempt);
+            SubscribeLocalEvent<StunnedComponent, DropAttemptEvent>(OnAttempt);
+            SubscribeLocalEvent<StunnedComponent, AttackAttemptEvent>(OnAttempt);
+            SubscribeLocalEvent<StunnedComponent, PickupAttemptEvent>(OnAttempt);
             SubscribeLocalEvent<StunnedComponent, IsEquippingAttemptEvent>(OnEquipAttempt);
             SubscribeLocalEvent<StunnedComponent, IsUnequippingAttemptEvent>(OnUnequipAttempt);
+            SubscribeLocalEvent<MobStateComponent, MobStateChangedEvent>(OnMobStateChanged);
+        }
+
+
+
+        private void OnMobStateChanged(EntityUid uid, MobStateComponent component, MobStateChangedEvent args)
+        {
+            if (!TryComp<StatusEffectsComponent>(uid, out var status))
+            {
+                return;
+            }
+            switch (args.NewMobState)
+            {
+                case MobState.Alive:
+                {
+                    break;
+                }
+                case MobState.Critical:
+                {
+                    _statusEffectSystem.TryRemoveStatusEffect(uid, "Stun");
+                    break;
+                }
+                case MobState.Dead:
+                {
+                    _statusEffectSystem.TryRemoveStatusEffect(uid, "Stun");
+                    break;
+                }
+                case MobState.Invalid:
+                default:
+                    return;
+            }
+
+        }
+
+        private void UpdateCanMove(EntityUid uid, StunnedComponent component, EntityEventArgs args)
+        {
+            _blocker.UpdateCanMove(uid);
         }
 
         private void OnSlowGetState(EntityUid uid, SlowedDownComponent component, ref ComponentGetState args)
@@ -93,9 +148,15 @@ namespace Content.Shared.Stunnable
             _standingStateSystem.Down(uid);
         }
 
-        private void OnKnockRemove(EntityUid uid, KnockedDownComponent component, ComponentRemove args)
+        private void OnKnockShutdown(EntityUid uid, KnockedDownComponent component, ComponentShutdown args)
         {
             _standingStateSystem.Stand(uid);
+        }
+
+        private void OnStandAttempt(EntityUid uid, KnockedDownComponent component, StandAttemptEvent args)
+        {
+            if (component.LifeStage <= ComponentLifeStage.Running)
+                args.Cancel();
         }
 
         private void OnSlowInit(EntityUid uid, SlowedDownComponent component, ComponentInit args)
@@ -103,8 +164,10 @@ namespace Content.Shared.Stunnable
             _movementSpeedModifierSystem.RefreshMovementSpeedModifiers(uid);
         }
 
-        private void OnSlowRemove(EntityUid uid, SlowedDownComponent component, ComponentRemove args)
+        private void OnSlowRemove(EntityUid uid, SlowedDownComponent component, ComponentShutdown args)
         {
+            component.SprintSpeedModifier = 1f;
+            component.WalkSpeedModifier = 1f;
             _movementSpeedModifierSystem.RefreshMovementSpeedModifiers(uid);
         }
 
@@ -119,8 +182,7 @@ namespace Content.Shared.Stunnable
         ///     Stuns the entity, disallowing it from doing many interactions temporarily.
         /// </summary>
         public bool TryStun(EntityUid uid, TimeSpan time, bool refresh,
-            StatusEffectsComponent? status = null,
-            SharedAlertsComponent? alerts = null)
+            StatusEffectsComponent? status = null)
         {
             if (time <= TimeSpan.Zero)
                 return false;
@@ -128,17 +190,17 @@ namespace Content.Shared.Stunnable
             if (!Resolve(uid, ref status, false))
                 return false;
 
-            Resolve(uid, ref alerts, false);
-
-            return _statusEffectSystem.TryAddStatusEffect<StunnedComponent>(uid, "Stun", time, refresh, alerts: alerts);
+            if (!_statusEffectSystem.TryAddStatusEffect<StunnedComponent>(uid, "Stun", time, refresh))
+                return false;
+            _adminLogger.Add(LogType.Stamina, LogImpact.Medium, $"{ToPrettyString(uid):user} stunned for {time.Seconds} seconds");
+            return true;
         }
 
         /// <summary>
         ///     Knocks down the entity, making it fall to the ground.
         /// </summary>
         public bool TryKnockdown(EntityUid uid, TimeSpan time, bool refresh,
-            StatusEffectsComponent? status = null,
-            SharedAlertsComponent? alerts = null)
+            StatusEffectsComponent? status = null)
         {
             if (time <= TimeSpan.Zero)
                 return false;
@@ -146,25 +208,19 @@ namespace Content.Shared.Stunnable
             if (!Resolve(uid, ref status, false))
                 return false;
 
-            Resolve(uid, ref alerts, false);
-
-            return _statusEffectSystem.TryAddStatusEffect<KnockedDownComponent>(uid, "KnockedDown", time, refresh, alerts: alerts);
+            return _statusEffectSystem.TryAddStatusEffect<KnockedDownComponent>(uid, "KnockedDown", time, refresh);
         }
 
         /// <summary>
         ///     Applies knockdown and stun to the entity temporarily.
         /// </summary>
         public bool TryParalyze(EntityUid uid, TimeSpan time, bool refresh,
-            StatusEffectsComponent? status = null,
-            SharedAlertsComponent? alerts = null)
+            StatusEffectsComponent? status = null)
         {
-            if (!Resolve(uid, ref status))
+            if (!Resolve(uid, ref status, false))
                 return false;
 
-            // Optional component.
-            Resolve(uid, ref alerts, false);
-
-            return TryKnockdown(uid, time, refresh, status, alerts) && TryStun(uid, time, refresh, status, alerts);
+            return TryKnockdown(uid, time, refresh, status) && TryStun(uid, time, refresh, status);
         }
 
         /// <summary>
@@ -172,19 +228,15 @@ namespace Content.Shared.Stunnable
         /// </summary>
         public bool TrySlowdown(EntityUid uid, TimeSpan time, bool refresh,
             float walkSpeedMultiplier = 1f, float runSpeedMultiplier = 1f,
-            StatusEffectsComponent? status = null,
-            SharedAlertsComponent? alerts = null)
+            StatusEffectsComponent? status = null)
         {
-            if (!Resolve(uid, ref status))
+            if (!Resolve(uid, ref status, false))
                 return false;
-
-            // "Optional" component.
-            Resolve(uid, ref alerts, false);
 
             if (time <= TimeSpan.Zero)
                 return false;
 
-            if (_statusEffectSystem.TryAddStatusEffect<SlowedDownComponent>(uid, "SlowedDown", time, refresh, status, alerts))
+            if (_statusEffectSystem.TryAddStatusEffect<SlowedDownComponent>(uid, "SlowedDown", time, refresh, status))
             {
                 var slowed = EntityManager.GetComponent<SlowedDownComponent>(uid);
                 // Doesn't make much sense to have the "TrySlowdown" method speed up entities now does it?
@@ -207,64 +259,51 @@ namespace Content.Shared.Stunnable
             if (args.Handled || knocked.HelpTimer > 0f)
                 return;
 
+            // TODO: This should be an event.
+            if (HasComp<SleepingComponent>(uid))
+                return;
+
             // Set it to half the help interval so helping is actually useful...
             knocked.HelpTimer = knocked.HelpInterval/2f;
 
             _statusEffectSystem.TryRemoveTime(uid, "KnockedDown", TimeSpan.FromSeconds(knocked.HelpInterval));
-
-            SoundSystem.Play(Filter.Pvs(uid), knocked.StunAttemptSound.GetSound(), uid, AudioHelpers.WithVariation(0.05f));
-
-            knocked.Dirty();
+            _audio.PlayPredicted(knocked.StunAttemptSound, uid, args.User);
+            Dirty(knocked);
 
             args.Handled = true;
         }
 
+        private void OnKnockedTileFriction(EntityUid uid, KnockedDownComponent component, ref TileFrictionEvent args)
+        {
+            args.Modifier *= KnockDownModifier;
+        }
+
         #region Attempt Event Handling
 
-        private void OnMoveAttempt(EntityUid uid, StunnedComponent stunned, MovementAttemptEvent args)
+        private void OnMoveAttempt(EntityUid uid, StunnedComponent stunned, UpdateCanMoveEvent args)
         {
+            if (stunned.LifeStage > ComponentLifeStage.Running)
+                return;
+
             args.Cancel();
         }
 
-        private void OnInteractAttempt(EntityUid uid, StunnedComponent stunned, InteractionAttemptEvent args)
-        {
-            args.Cancel();
-        }
-
-        private void OnUseAttempt(EntityUid uid, StunnedComponent stunned, UseAttemptEvent args)
-        {
-            args.Cancel();
-        }
-
-        private void OnThrowAttempt(EntityUid uid, StunnedComponent stunned, ThrowAttemptEvent args)
-        {
-            args.Cancel();
-        }
-
-        private void OnDropAttempt(EntityUid uid, StunnedComponent stunned, DropAttemptEvent args)
-        {
-            args.Cancel();
-        }
-
-        private void OnPickupAttempt(EntityUid uid, StunnedComponent stunned, PickupAttemptEvent args)
-        {
-            args.Cancel();
-        }
-
-        private void OnAttackAttempt(EntityUid uid, StunnedComponent stunned, AttackAttemptEvent args)
+        private void OnAttempt(EntityUid uid, StunnedComponent stunned, CancellableEntityEventArgs args)
         {
             args.Cancel();
         }
 
         private void OnEquipAttempt(EntityUid uid, StunnedComponent stunned, IsEquippingAttemptEvent args)
         {
-            if(args.Equipee == uid)
+            // is this a self-equip, or are they being stripped?
+            if (args.Equipee == uid)
                 args.Cancel();
         }
 
         private void OnUnequipAttempt(EntityUid uid, StunnedComponent stunned, IsUnequippingAttemptEvent args)
         {
-            if(args.Unequipee == uid)
+            // is this a self-equip, or are they being stripped?
+            if (args.Unequipee == uid)
                 args.Cancel();
         }
 
